@@ -1,0 +1,53 @@
+
+name: Cloud Coordination Hub CD
+
+on:
+  workflow_run:
+    workflows: ["Cloud Coordination Hub CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare-deployment:
+    if: >-
+      ${{
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push'
+      }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies
+        run: |
+          npm ci --prefix frontend
+          npm ci --prefix backend
+
+      - name: Build Application
+        run: |
+          npm run build --prefix frontend
+          npm run build --prefix backend
+
+      - name: Package Deployment Files
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-coordination-hub-build
+          path: |
+            frontend/dist/
+            backend/dist/
+            backend/package.json
+            backend/package-lock.json
+          if-no-files-found: error
