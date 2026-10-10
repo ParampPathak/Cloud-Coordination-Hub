@@ -1,0 +1,30 @@
+[
+  { "ParameterKey": "EnvironmentName", "ParameterValue": "cch-midpoint" },
+  {
+    "ParameterKey": "ApplicationAmi",
+    "ParameterValue": "REPLACE_WITH_PREPARED_AMI_ID"
+  },
+  {
+    "ParameterKey": "ExistingInstanceProfile",
+    "ParameterValue": "REPLACE_WITH_EXISTING_PROFILE_NAME"
+  },
+  { "ParameterKey": "InstanceType", "ParameterValue": "t3.micro" },
+  { "ParameterKey": "MinCapacity", "ParameterValue": "1" },
+  { "ParameterKey": "DesiredCapacity", "ParameterValue": "1" },
+  { "ParameterKey": "MaxCapacity", "ParameterValue": "2" },
+  { "ParameterKey": "TableName", "ParameterValue": "cloud-coordination-hub" },
+  {
+    "ParameterKey": "ApplicationOrigin",
+    "ParameterValue": "https://REPLACE_WITH_YOUR_HOSTNAME"
+  },
+  {
+    "ParameterKey": "ExistingCertificateArn",
+    "ParameterValue": "REPLACE_WITH_EXISTING_CERTIFICATE_ARN"
+  },
+  {
+    "ParameterKey": "AllowedClientCidr",
+    "ParameterValue": "REPLACE_WITH_PUBLIC_IP/32"
+  },
+  { "ParameterKey": "EnableLogsEndpoint", "ParameterValue": "false" },
+  { "ParameterKey": "EnableCloudTrail", "ParameterValue": "false" }
+]

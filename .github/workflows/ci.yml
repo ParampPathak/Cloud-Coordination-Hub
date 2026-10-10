@@ -1,52 +1,44 @@
-
 name: Cloud Coordination Hub CI
-
 on:
   push:
-    branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
-  build-and-test:
+  application:
     runs-on: ubuntu-latest
-
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:3.1.0
+        ports: [8000:8000]
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
         with:
-          node-version: '22'
-
-      - name: Install Frontend Dependencies
-        run: npm ci --prefix frontend
-
-      - name: Install Backend Dependencies
-        run: npm ci --prefix backend
-
-      - name: Lint Frontend
-        run: npm run lint --prefix frontend
-
-      - name: Lint Backend
-        run: npm run lint --prefix backend
-
-      - name: Typecheck Frontend
-        run: npm run typecheck --prefix frontend
-
-      - name: Typecheck Backend
-        run: npm run typecheck --prefix backend
-
-      - name: Test Frontend
-        run: npm run test --prefix frontend
-
-      - name: Test Backend
-        run: npm run test --prefix backend
-
-      - name: Build Frontend
-        run: npm run build --prefix frontend
-
-      - name: Build Backend
-        run: npm run build --prefix backend
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:dynamodb
+        env:
+          DYNAMODB_ENDPOINT: http://127.0.0.1:8000
+      - run: npm run test:e2e
+      - run: npm run infra:validate
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: pip install -r infrastructure/requirements.txt
+      - run: cfn-lint infrastructure/hub.yaml
+      - run: docker build -t cloud-coordination-hub:ci .
+      - uses: actions/upload-artifact@v7
+        with:
+          name: application-build
+          path: dist
+          retention-days: 7
+# No AWS credentials, OIDC, infrastructure deployment, or image publication.

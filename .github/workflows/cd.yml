@@ -1,9 +1,8 @@
-
 name: Cloud Coordination Hub CD
 
 on:
   workflow_run:
-    workflows: ["Cloud Coordination Hub CI"]
+    workflows: ['Cloud Coordination Hub CI']
     types: [completed]
     branches: [main]
 
@@ -17,37 +16,30 @@ jobs:
         github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.event == 'push'
       }}
-
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@v7
         with:
-          node-version: '22'
-
-      - name: Install Dependencies
-        run: |
-          npm ci --prefix frontend
-          npm ci --prefix backend
-
-      - name: Build Application
-        run: |
-          npm run build --prefix frontend
-          npm run build --prefix backend
-
-      - name: Package Deployment Files
-        uses: actions/upload-artifact@v4
+          node-version: 24
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
         with:
           name: cloud-coordination-hub-build
           path: |
-            frontend/dist/
-            backend/dist/
-            backend/package.json
-            backend/package-lock.json
+            dist/frontend/
+            dist/backend/backend/
+            dist/backend/shared/
+            package.json
+            package-lock.json
+            Dockerfile
+            infrastructure/
+            scripts/install-offline.sh
+          retention-days: 7
           if-no-files-found: error
+# Preparation only: no AWS credentials, AWS calls, deployment, or image publication.

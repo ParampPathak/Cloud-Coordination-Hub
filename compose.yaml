@@ -1,0 +1,34 @@
+services:
+  app:
+    build: .
+    ports: ['127.0.0.1:3000:3000']
+    environment:
+      NODE_ENV: development
+      APP_ORIGIN: http://localhost:3000
+      HOST: 0.0.0.0
+      DATABASE_DRIVER: dynamodb
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      DYNAMODB_TABLE: cloud-coordination-local
+      AWS_REGION: us-east-1
+      ALLOW_AWS: 'false'
+    depends_on:
+      init-db:
+        condition: service_completed_successfully
+    restart: unless-stopped
+  dynamodb:
+    image: amazon/dynamodb-local:3.1.0
+    command: '-jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data'
+    working_dir: /home/dynamodblocal
+    volumes: ['dynamodb-data:/home/dynamodblocal/data']
+    ports: ['127.0.0.1:8000:8000']
+    user: root
+  init-db:
+    build: .
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      DYNAMODB_TABLE: cloud-coordination-local
+    entrypoint: ['node', 'scripts/init-local-dynamodb.mjs']
+    volumes: ['./scripts:/app/scripts:ro']
+    depends_on: [dynamodb]
+volumes:
+  dynamodb-data:

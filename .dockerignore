@@ -1,0 +1,12 @@
+.git
+.npm
+node_modules
+dist
+data
+.env
+.env.*
+!.env.example
+coverage
+artifacts
+*.log
+.tools

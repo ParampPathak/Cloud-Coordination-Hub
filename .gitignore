@@ -147,3 +147,15 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Persistent local databases and test artifacts
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+playwright-report/
+test-results/
+*.local
+.tools/
+artifacts/
+*.local.json
