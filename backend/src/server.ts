@@ -1,5 +1,5 @@
 import { createApp } from './app.js';
-import { readConfig } from './config.js';
+import { allowedOrigins, readConfig } from './config.js';
 import { createStore } from './store.js';
 const config = readConfig();
 const store = createStore(config);
@@ -11,6 +11,10 @@ const server = createApp(config, store).listen(config.PORT, config.HOST, () =>
       message: 'Cloud Coordination Hub started',
       url: `http://${config.HOST}:${config.PORT}`,
       database: store.kind,
+      ...(config.DATABASE_DRIVER === 'sqlite'
+        ? { sqlitePath: config.SQLITE_PATH }
+        : {}),
+      allowedOrigins: [...allowedOrigins(config)],
     }),
   ),
 );

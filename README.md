@@ -58,7 +58,7 @@ npm run dev
 
 Open **http://localhost:5173**. The seed command prints a fresh temporary password for `organizer@example.test` and `attendee@example.test`. It never writes that password to source and refuses to overwrite an existing database. Do not commit or include it in presentation evidence. Create additional attendees through the sign-up interface. If you prefer empty data, skip the seed and provision your own organizer below.
 
-The backend listens on `127.0.0.1:3000`; Vite proxies `/api`. SQLite lives at `data/hub.sqlite` and persists across restarts. No AWS credentials are needed, requested, or looked up by this mode. Use `localhost` in the browser to match the default `APP_ORIGIN`.
+The backend listens on `127.0.0.1:3000`; Vite proxies `/api`. SQLite lives at `data/hub.sqlite` and persists across restarts. Relative `SQLITE_PATH` values resolve from the application package root for both seeding and the server; each prints its resolved database path. No AWS credentials are needed, requested, or looked up by this mode. Local development permits both `localhost` and `127.0.0.1` on the API port (default 3000) and Vite port 5173. Production still requires the exact configured HTTPS `APP_ORIGIN`.
 
 Optional configuration:
 
@@ -149,7 +149,7 @@ An existing permitted certificate/DNS and suitable instance profile/PassRole are
 
 ## API and security
 
-See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and [architecture](docs/midpoint/architecture.md). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; production uses role-based AWS access. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce exact Origin. There is no development identity bypass.
+See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and [architecture](docs/midpoint/architecture.md). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; production uses role-based AWS access. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
 
 ## Midpoint materials and roadmap
 

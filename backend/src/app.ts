@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { z, ZodError } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import type { Config } from './config.js';
+import { allowedOrigins, type Config } from './config.js';
 import type { Store } from './store.js';
 import { HubService, HttpError } from './service.js';
 import {
@@ -70,6 +70,7 @@ const credentials = z
 export function createApp(config: Config, store: Store, logging = true) {
   const app = express();
   const service = new HubService(store);
+  const origins = allowedOrigins(config);
   app.disable('x-powered-by');
   // The deployed application must be reachable only from the ALB security group.
   if (config.NODE_ENV === 'production') app.set('trust proxy', 1);
@@ -119,7 +120,8 @@ export function createApp(config: Config, store: Store, logging = true) {
     res.setHeader('Cache-Control', 'no-store');
     if (
       !['GET', 'HEAD', 'OPTIONS'].includes(req.method) &&
-      req.headers.origin !== config.APP_ORIGIN
+      (typeof req.headers.origin !== 'string' ||
+        !origins.has(req.headers.origin))
     )
       return next(new HttpError(403, 'Request origin is not permitted.'));
     next();

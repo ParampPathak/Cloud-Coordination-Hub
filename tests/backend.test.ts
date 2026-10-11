@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { SqliteStore } from '../backend/src/store.js';
 import { HubService } from '../backend/src/service.js';
 import { createApp } from '../backend/src/app.js';
-import { readConfig } from '../backend/src/config.js';
+import { allowedOrigins, readConfig } from '../backend/src/config.js';
+import { createDemoData } from '../backend/src/demo-data.js';
 import {
   createUser,
   login,
@@ -458,6 +459,28 @@ describe('API authentication and validation', () => {
   });
 });
 describe('Local-only configuration safeguards', () => {
+  it('uses an absolute shared database path and keeps the memory test database unchanged', () => {
+    expect(readConfig({}).SQLITE_PATH).toMatch(/[\\/]data[\\/]hub\.sqlite$/);
+    expect(readConfig({ SQLITE_PATH: ':memory:' }).SQLITE_PATH).toBe(
+      ':memory:',
+    );
+  });
+  it('permits only explicit local development UI ports, with exact production origin', () => {
+    const local = allowedOrigins(readConfig({}));
+    expect(local.has('http://127.0.0.1:3000')).toBe(true);
+    expect(local.has('http://localhost:3000')).toBe(true);
+    expect(local.has('http://127.0.0.1:5173')).toBe(true);
+    expect(local.has('http://127.0.0.1:9999')).toBe(false);
+    const production = allowedOrigins(
+      readConfig({
+        NODE_ENV: 'production',
+        APP_ORIGIN: 'https://hub.example',
+        DATABASE_DRIVER: 'dynamodb',
+        ALLOW_AWS: 'true',
+      }),
+    );
+    expect([...production]).toEqual(['https://hub.example']);
+  });
   it('defaults to SQLite and prohibits implicit AWS connections', () => {
     expect(readConfig({}).DATABASE_DRIVER).toBe('sqlite');
     expect(() => readConfig({ DATABASE_DRIVER: 'dynamodb' })).toThrow(
@@ -482,5 +505,73 @@ describe('Local-only configuration safeguards', () => {
     expect(() =>
       readConfig({ NODE_ENV: 'production', APP_ORIGIN: 'https://hub.example' }),
     ).toThrow('shared DynamoDB');
+  });
+});
+
+describe('Seeded demo authentication from supported local UI origins', () => {
+  it('authenticates seeded organizer and attendee, preserves CSRF checks and does not reseed existing data', async () => {
+    const { password } = await createDemoData(store);
+    const app = createApp(
+      readConfig({ NODE_ENV: 'development', SQLITE_PATH: ':memory:' }),
+      store,
+      false,
+    );
+    for (const [email, role] of [
+      ['organizer@example.test', 'organizer'],
+      ['attendee@example.test', 'user'],
+    ]) {
+      for (const origin of [
+        'http://127.0.0.1:3000',
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+      ]) {
+        const agent = request.agent(app);
+        const response = await agent
+          .post('/api/auth/login')
+          .set('Origin', origin)
+          .send({ email, password });
+        expect(response.status).toBe(200);
+        expect(response.body).toMatchObject({ email, role });
+        expect(response.body.passwordHash).toBeUndefined();
+        expect((await agent.get('/api/auth/me')).body.email).toBe(email);
+        expect((await agent.get('/api/snapshot')).status).toBe(200);
+      }
+    }
+    for (const origin of [
+      'http://evil.example',
+      'http://127.0.0.1:9999',
+      'null',
+      'http://127.0.0.1:3000.evil.example',
+    ]) {
+      expect(
+        (
+          await request(app)
+            .post('/api/auth/login')
+            .set('Origin', origin)
+            .send({ email: 'organizer@example.test', password })
+        ).status,
+      ).toBe(403);
+    }
+    expect(
+      (
+        await request(app)
+          .post('/api/auth/login')
+          .send({ email: 'organizer@example.test', password })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(app)
+          .post('/api/auth/login')
+          .set('Origin', 'http://127.0.0.1:3000')
+          .send({
+            email: 'organizer@example.test',
+            password: 'WrongPassword19',
+          })
+      ).status,
+    ).toBe(401);
+    await expect(createDemoData(store)).rejects.toThrow('empty local database');
+    expect(await store.list('user')).toHaveLength(2);
   });
 });

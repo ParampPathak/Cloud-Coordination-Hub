@@ -1,5 +1,26 @@
 import 'dotenv/config';
 import { z } from 'zod';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync } from 'node:fs';
+
+// Source and compiled CLI/server files share the same repository/package root.
+function packageRoot() {
+  let directory = dirname(fileURLToPath(import.meta.url));
+  while (true) {
+    const manifest = resolve(directory, 'package.json');
+    if (
+      existsSync(manifest) &&
+      JSON.parse(readFileSync(manifest, 'utf8')).name ===
+        'cloud-coordination-hub'
+    )
+      return directory;
+    const parent = dirname(directory);
+    if (parent === directory)
+      throw new Error('Application package root was not found.');
+    directory = parent;
+  }
+}
 export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -15,8 +36,31 @@ export const envSchema = z.object({
   AWS_REGION: z.string().default('us-east-1'),
 });
 export type Config = z.infer<typeof envSchema>;
+export function allowedOrigins(config: Config): Set<string> {
+  const allowed = new Set([config.APP_ORIGIN]);
+  const configured = new URL(config.APP_ORIGIN);
+  // Explicit local UI ports only. Never trust Host/Forwarded or allow all origins.
+  if (
+    config.NODE_ENV === 'development' &&
+    configured.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(configured.hostname)
+  ) {
+    const ports = new Set([
+      configured.port || '80',
+      String(config.PORT),
+      '5173',
+    ]);
+    for (const hostname of ['localhost', '127.0.0.1', '[::1]']) {
+      for (const port of ports)
+        allowed.add(new URL(`http://${hostname}:${port}`).origin);
+    }
+  }
+  return allowed;
+}
 export function readConfig(source = process.env): Config {
   const config = envSchema.parse(source);
+  if (config.SQLITE_PATH !== ':memory:')
+    config.SQLITE_PATH = resolve(packageRoot(), config.SQLITE_PATH);
   if (config.NODE_ENV === 'production') {
     if (!config.APP_ORIGIN.startsWith('https://'))
       throw new Error('Production requires an HTTPS APP_ORIGIN.');

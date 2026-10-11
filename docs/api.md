@@ -1,6 +1,6 @@
 # REST API
 
-Same-origin JSON API. All data routes require `hub_session`. Every mutation, including login, registration, and logout, requires `Origin` exactly matching `APP_ORIGIN`. `GET /api/health` and `/api/ready` are public. No bearer-token or organizer-ID bypass exists.
+Same-origin JSON API. All data routes require `hub_session`. Every mutation, including login, registration, and logout, requires an allowed `Origin`. Production requires the exact `APP_ORIGIN`; local development also allows localhost/127.0.0.1/IPv6 loopback on the configured origin port, backend port and Vite port 5173. Missing, arbitrary-port and hostile origins are rejected. `GET /api/health` and `/api/ready` are public. No bearer-token or organizer-ID bypass exists.
 
 | Method | Endpoint                           | Behavior                                                            |
 | ------ | ---------------------------------- | ------------------------------------------------------------------- |

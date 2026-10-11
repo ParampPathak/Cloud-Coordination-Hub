@@ -50,3 +50,11 @@ The health/readiness and documented API routes were exercised with Supertest or 
 ## Evidence still required before a cloud midpoint demonstration
 
 Verify Academy profile/PassRole, certificate/DNS, approved type/quota and prepared AMI. After separately approved deployment, obtain actual healthy targets, private-subnet instance placement, live DynamoDB records, metrics/log delivery if enabled, CloudFormation resource state and configured CloudTrail audit evidence. Repeat the independent-user demo against the cloud origin, measure latency/errors and rehearse the presentation. No fabricated cloud screenshots or results are supplied.
+
+## 2026-10-11 login-origin fix
+
+Reproduced live POST /api/auth/login from http://127.0.0.1:3000 returning 403 with "Request origin is not permitted." The default configured origin was http://localhost:5173, so CSRF rejected the request before credential verification. Read-only inspection found both demo users in data/hub.sqlite with valid salted scrypt hash formats. No account-status restriction exists.
+
+Development now uses an explicit loopback/known-port allowlist while production retains exact origin enforcement. Relative SQLite paths resolve from the package root and the server/seed log the absolute path. Seed data creation was extracted into one shared local-only helper used by the CLI and regression tests.
+
+After the fix, the live backend returned the expected 401 for an intentionally wrong password from the previously rejected origin. Isolated seeded organizer/attendee tests returned 200, public user data and session cookies from both localhost/127.0.0.1 on ports 3000/5173; authenticated me/snapshot requests succeeded. Hostile, missing, null and arbitrary-port origins still returned 403; wrong passwords returned 401. Existing saved passwords were not available for live successful-login testing and were not reset. Existing application data was not deleted or reseeded. Full local checks passed with 29 tests passed and the DynamoDB Local integration test still explicitly skipped.

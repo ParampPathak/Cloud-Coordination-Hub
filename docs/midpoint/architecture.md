@@ -69,7 +69,7 @@ Private instances do not install software, pull from registries, reach GitHub, c
 
 ## Security and observability
 
-Application controls include password hashing, random 256-bit session tokens (hashed in storage), 8-hour expiry, HttpOnly/SameSite cookies, Secure cookies in production, exact Origin checks on mutations including login, no permissive CORS, strict Zod schemas, request size/rate limits, CSV formula escaping, ownership checks, and safe error responses. Frontend registration always creates attendees; organizer provisioning uses the trusted CLI. Sessions and important data live in the selected database, not application memory. Production configuration rejects SQLite and an HTTP origin.
+Application controls include password hashing, random 256-bit session tokens (hashed in storage), 8-hour expiry, HttpOnly/SameSite cookies, Secure cookies in production, explicit Origin checks on mutations including login (exact origin in production, known loopback UI ports in development), no permissive CORS, strict Zod schemas, request size/rate limits, CSV formula escaping, ownership checks, and safe error responses. Frontend registration always creates attendees; organizer provisioning uses the trusted CLI. Sessions and important data live in the selected database, not application memory. Production configuration rejects SQLite and an HTTP origin.
 
 Infrastructure prepares IMDSv2, encrypted EBS, DynamoDB encryption and PITR, a table-scoped endpoint policy, restricted groups, and seven-day log retention. The existing role should have only the permissions documented in [deployment.md](deployment.md); this repository cannot change it. Network templates and policies are prepared, not cloud-verified.
 
