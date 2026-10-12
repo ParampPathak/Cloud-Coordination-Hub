@@ -138,8 +138,12 @@ try {
   await orgPage
     .getByLabel('Question', { exact: true })
     .fill('Which demo should we show first?');
-  await orgPage.getByLabel('Options', { exact: true }).fill('Events\nPolls');
-  await orgPage.getByRole('button', { name: 'Publish poll' }).click();
+  await orgPage.getByLabel('Option 1', { exact: true }).fill('Events');
+  await orgPage.getByLabel('Option 2', { exact: true }).fill('Polls');
+  await orgPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Create poll' })
+    .click();
   await orgPage
     .getByRole('heading', { name: 'Which demo should we show first?' })
     .waitFor();
@@ -150,11 +154,202 @@ try {
       name: 'Which demo should we show first?',
     }),
   });
-  await pollCard.getByRole('radio', { name: 'Events' }).check();
+  await pollCard.getByRole('radio', { name: /^Events/ }).check();
   await pollCard.getByRole('button', { name: 'Submit vote' }).click();
-  await pollCard.getByText('Your vote is recorded').waitFor();
+  await pollCard.getByText('Your selection is recorded.').waitFor();
   console.log(
     'PASS: poll creation and authenticated voting through the browser.',
+  );
+  // Stage 1: identified signups, capacity display, policy changes and administrator management.
+  const administrator = await createUser(
+    store,
+    'admin@example.test',
+    'Campus Admin',
+    password,
+    'admin',
+  );
+  const adminPage = await newPage(administrator.email);
+  await orgPage
+    .getByRole('button', { name: 'Create poll', exact: true })
+    .click();
+  await orgPage
+    .getByLabel('Question', { exact: true })
+    .fill('Stage 1 topic signup');
+  await orgPage
+    .getByRole('combobox', { name: /Poll type/ })
+    .selectOption('signup');
+  await orgPage
+    .getByLabel('Option 1', { exact: true })
+    .fill(
+      'Science and interdisciplinary computing projects with students from across the university',
+    );
+  await orgPage.getByLabel('Option 2', { exact: true }).fill('Art');
+  await orgPage.getByLabel('Capacity 1', { exact: true }).fill('1');
+  await orgPage.getByLabel('Capacity 2', { exact: true }).fill('2');
+  await orgPage.getByText('Advanced settings', { exact: true }).click();
+  await orgPage.getByRole('button', { name: '+ Add Option' }).click();
+  await orgPage
+    .getByLabel('Option 3', { exact: true })
+    .fill('An optional topic with a long name for testing the responsive form');
+  await orgPage.getByLabel('Capacity 3', { exact: true }).fill('9');
+  mkdirSync('artifacts/poll-ui', { recursive: true });
+  await orgPage
+    .getByRole('dialog')
+    .screenshot({ path: 'artifacts/poll-ui/create-desktop.png' });
+  await orgPage.setViewportSize({ width: 390, height: 844 });
+  assert(
+    await orgPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    'Poll modal caused page overflow',
+  );
+  assert(
+    await orgPage
+      .getByRole('dialog')
+      .evaluate((dialog) => dialog.scrollWidth <= dialog.clientWidth),
+    'Poll modal content overflowed horizontally',
+  );
+  await orgPage
+    .getByRole('dialog')
+    .screenshot({ path: 'artifacts/poll-ui/create-mobile.png' });
+  await orgPage
+    .getByLabel('Allow cancellation while open', { exact: true })
+    .scrollIntoViewIfNeeded();
+  await orgPage
+    .getByRole('dialog')
+    .screenshot({ path: 'artifacts/poll-ui/settings-mobile.png' });
+  assert(
+    await orgPage
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Create poll', exact: true })
+      .isVisible(),
+    'Poll footer was not visible while scrolling',
+  );
+
+  await orgPage.getByRole('button', { name: 'Remove option 3' }).click();
+  assert.equal(
+    await orgPage.getByLabel('Capacity 2', { exact: true }).inputValue(),
+    '2',
+  );
+  await orgPage.setViewportSize({ width: 1440, height: 1100 });
+
+  await orgPage.getByLabel('Allow selection changes', { exact: true }).check();
+  await orgPage
+    .getByLabel('Allow cancellation while open', { exact: true })
+    .check();
+  await orgPage
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Create poll', exact: true })
+    .click();
+  await orgPage
+    .getByRole('heading', { name: 'Stage 1 topic signup' })
+    .waitFor();
+  const createSignup = (await service.snapshot(organizer)).polls.find(
+    (p) => p.question === 'Stage 1 topic signup',
+  )!;
+  await orgPage.getByRole('button', { name: 'Refresh workspace' }).click();
+  const signupCard = (page: typeof first) =>
+    page.locator('article').filter({
+      has: page.getByRole('heading', { name: 'Stage 1 topic signup' }),
+    });
+  assert(
+    await signupCard(orgPage)
+      .getByRole('button', { name: 'Register', exact: true })
+      .isDisabled(),
+  );
+  await first.getByRole('button', { name: 'Refresh workspace' }).click();
+  await signupCard(first)
+    .getByRole('radio', { name: /^Science/ })
+    .check();
+  await signupCard(first)
+    .getByRole('button', { name: 'Register', exact: true })
+    .click();
+  await signupCard(first)
+    .getByText('Your registration is confirmed.')
+    .waitFor();
+  await second.getByRole('link', { name: 'Polls', exact: true }).click();
+  await second.getByRole('button', { name: 'Refresh workspace' }).click();
+  assert(
+    await signupCard(second)
+      .getByRole('radio', { name: /^Science/ })
+      .isDisabled(),
+  );
+  await signupCard(second).getByRole('radio', { name: /^Art/ }).check();
+  await signupCard(second)
+    .getByRole('button', { name: 'Register', exact: true })
+    .click();
+  await signupCard(second)
+    .getByText('Your registration is confirmed.')
+    .waitFor();
+  await second.setViewportSize({ width: 390, height: 844 });
+  assert(
+    await second.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    'Poll cards overflowed on mobile',
+  );
+  await signupCard(second).screenshot({
+    path: 'artifacts/poll-ui/signup-mobile.png',
+  });
+  await second.setViewportSize({ width: 1440, height: 1100 });
+
+  await adminPage.getByRole('link', { name: 'Polls', exact: true }).click();
+  await adminPage.getByRole('button', { name: 'Refresh workspace' }).click();
+  await signupCard(adminPage)
+    .getByRole('button', { name: 'Manage poll' })
+    .click();
+  await signupCard(adminPage)
+    .getByRole('cell', { name: 'Jordan Lee', exact: true })
+    .waitFor();
+  await signupCard(adminPage).getByLabel('Search participants').fill('Jordan');
+  await signupCard(adminPage)
+    .getByRole('cell', { name: 'first@example.test', exact: true })
+    .waitFor();
+  adminPage.on('dialog', (dialog) => void dialog.accept());
+  await signupCard(adminPage)
+    .getByRole('button', { name: 'Remove participant' })
+    .click();
+  await signupCard(adminPage)
+    .getByText('No participants match these filters.')
+    .waitFor();
+  await second.getByRole('button', { name: 'Refresh workspace' }).click();
+  await signupCard(second)
+    .getByRole('radio', { name: /^Science/ })
+    .check();
+  const switchResponse = second.waitForResponse(
+    (response) =>
+      response.url().includes(`/polls/${createSignup.id}/selections`) &&
+      response.request().method() === 'POST',
+  );
+  await signupCard(second)
+    .getByRole('button', { name: 'Change selection' })
+    .click();
+  assert.equal((await switchResponse).status(), 200);
+  assert.deepEqual(
+    (
+      await service.snapshot({
+        ...organizer,
+        id: (
+          await store.list<import('../shared/types.js').StoredUser>('user')
+        ).find((u) => u.email === 'second@example.test')!.id,
+      })
+    ).polls.find((p) => p.id === createSignup.id)!.mySelections,
+    [createSignup.settings!.optionIds[0]],
+  );
+  await signupCard(second)
+    .getByRole('button', { name: 'Cancel selection' })
+    .click();
+  await signupCard(second)
+    .getByRole('button', { name: 'Register', exact: true })
+    .waitFor();
+  await signupCard(adminPage)
+    .getByRole('button', { name: 'Close poll', exact: true })
+    .click();
+  await signupCard(adminPage)
+    .getByText(/^closed.*signup$/)
+    .waitFor();
+  console.log(
+    'PASS: signup capacity, owner voting restriction, participant privacy, admin search/removal, switching, cancellation and closing.',
   );
   await orgPage.getByRole('link', { name: 'Scheduling', exact: true }).click();
   await orgPage.getByRole('button', { name: 'Create time slot' }).click();

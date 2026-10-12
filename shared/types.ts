@@ -1,4 +1,4 @@
-export type Role = 'organizer' | 'user';
+export type Role = 'organizer' | 'user' | 'admin';
 export interface User {
   id: string;
   email: string;
@@ -36,6 +36,43 @@ export interface Poll {
   createdAt: string;
   closed: boolean;
   votes: Record<string, number>;
+  settings?: PollSettings;
+  entries?: PollEntry[];
+  schemaVersion?: number;
+}
+export interface PollSettings {
+  mode: 'standard' | 'signup' | 'multiple';
+  optionIds: string[];
+  capacities: (number | null)[];
+  maxSelections: number;
+  allowOrganizerVote: boolean;
+  allowChanges: boolean;
+  allowCancellation: boolean;
+  anonymous: boolean;
+  resultsVisibility: 'always' | 'after-vote' | 'after-close' | 'organizer';
+  state: 'draft' | 'open' | 'closed' | 'archived';
+}
+export interface PollEntry {
+  userId: string;
+  optionId: string;
+  name?: string;
+  email?: string;
+  createdAt: string | null;
+  sequence: number;
+  status: 'confirmed' | 'cancelled';
+}
+export interface PollInput {
+  question: string;
+  options: string[];
+  mode?: PollSettings['mode'];
+  capacities?: (number | null)[];
+  maxSelections?: number;
+  allowOrganizerVote?: boolean;
+  allowChanges?: boolean;
+  allowCancellation?: boolean;
+  anonymous?: boolean;
+  resultsVisibility?: PollSettings['resultsVisibility'];
+  state?: 'draft' | 'open';
 }
 export interface Slot {
   id: string;
@@ -63,10 +100,15 @@ export interface EventView extends Omit<
   waitlistCount: number;
   registration: (Registration & { position?: number }) | null;
 }
-export interface PollView extends Omit<Poll, 'votes'> {
+export interface PollView extends Omit<Poll, 'votes' | 'entries'> {
   counts: number[];
   totalVotes: number;
   myVote: number | null;
+  mySelections: string[];
+  resultsVisible: boolean;
+  totalSelections: number;
+  availability: { registered: number; remaining: number | null }[];
+  canManage: boolean;
 }
 export interface Snapshot {
   events: EventView[];

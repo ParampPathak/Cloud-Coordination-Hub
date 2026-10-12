@@ -41,3 +41,18 @@ Example local event creation (after browser login, use the browser UI or a cooki
 ```
 
 The concrete date above is an API shape example; use an actual future instant for demonstrations. The dashboard refreshes every 15 seconds and after changes; a manual Refresh workspace control is also available. Snapshot queries are independently consistent reads, not a transactionally frozen cross-resource report.
+
+## Stage 1 polling additions
+
+Legacy `{question,options:string[]}` creation, `{option:number}` voting and close routes remain supported. Creation also accepts `mode` (`standard|signup|multiple`), one nullable `capacities` entry per option, `maxSelections`, `allowOrganizerVote`, `allowChanges`, `allowCancellation`, `anonymous`, `resultsVisibility` (`always|after-vote|after-close|organizer`), and initial `state` (`draft|open`). New polls default to anonymous standard voting, organizer voting off, no changes/cancellation, and visible results. Capacity modes require identified participation; signup requires every capacity. Valid capacities are positive integers up to 2,000.
+
+| Method | Route                                        | Behavior                                                                                                      |
+| ------ | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| PUT    | `/api/polls/:id`                             | Owner/admin replaces creation settings, retaining lifecycle; unsafe structural edits after participation fail |
+| POST   | `/api/polls/:id/selections`                  | `{optionIds:string[]}`; stable IDs, unique selections, maximum and capacity validated atomically              |
+| DELETE | `/api/polls/:id/selections/me`               | Cancel own selections when open and policy permits                                                            |
+| POST   | `/api/polls/:id/state`                       | Owner/admin `{state: draft                                                                                    | open               | closed                | archived}`; archived polls cannot reopen |
+| GET    | `/api/polls/:id/participants`                | Owner/admin identified list; `search,optionId,sort=name                                                       | date,direction=asc | desc,status=confirmed | cancelled,page,pageSize`                 |
+| DELETE | `/api/polls/:id/participants/:participantId` | Owner/admin `{confirm:true}` cancels all selected topics for that participant                                 |
+
+Participant responses contain `{rows,total,page,pageSize}` with a default page size of 20 (maximum 100). Anonymous participant reads/removals return 403 even for administrators. Poll views expose settings/stable IDs, caller-only `mySelections`, `canManage`, `resultsVisible`, participant/selection totals and capacity availability. Hidden results have empty counts and zero result totals; capacity usage remains public for capacity signups. Stored votes/entries and unrelated participant identities never appear in snapshot responses. Drafts appear only to owner/admin. Standard vote activity identities are redacted, including legacy activity records. Selection conflict returns 409 without altering the previous registration. Poll CSV/XLSX exports remain Stage 4.

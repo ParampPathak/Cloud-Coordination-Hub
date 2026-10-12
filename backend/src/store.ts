@@ -11,6 +11,8 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import type { Activity } from '../../shared/types.js';
 import type { Config } from './config.js';
+import { normalizePoll } from './polls.js';
+import type { Poll } from '../../shared/types.js';
 
 export interface RecordVersion<T> {
   data: T;
@@ -40,6 +42,37 @@ export class SqliteStore implements Store {
     this.db.exec(
       'PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000; CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id TEXT NOT NULL, data TEXT NOT NULL, version INTEGER NOT NULL, PRIMARY KEY(kind,id));',
     );
+    this.db.exec('BEGIN IMMEDIATE');
+    try {
+      this.db.exec(
+        'CREATE TABLE IF NOT EXISTS migrations (id TEXT PRIMARY KEY, applied_at TEXT NOT NULL)',
+      );
+      if (
+        !this.db
+          .prepare('SELECT id FROM migrations WHERE id=?')
+          .get('001-polls')
+      ) {
+        const rows = this.db
+          .prepare("SELECT id,data FROM records WHERE kind='poll'")
+          .all();
+        for (const row of rows) {
+          const poll = normalizePoll(JSON.parse(String(row.data)) as Poll);
+          this.db
+            .prepare(
+              "UPDATE records SET data=?,version=version+1 WHERE kind='poll' AND id=?",
+            )
+            .run(serialize(poll), row.id);
+        }
+        this.db
+          .prepare('INSERT INTO migrations(id,applied_at) VALUES (?,?)')
+          .run('001-polls', new Date().toISOString());
+      }
+      this.db.exec('COMMIT');
+    } catch (error) {
+      this.db.exec('ROLLBACK');
+      this.db.close();
+      throw error;
+    }
   }
   async get<T>(kind: string, id: string) {
     const row = this.db

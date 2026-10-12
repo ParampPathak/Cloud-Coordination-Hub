@@ -1,3 +1,4 @@
+import { pollSchema } from './polls.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -30,20 +31,6 @@ const eventSchema = z
     location: z.string().trim().min(1).max(300),
     startsAt: future,
     capacity: z.number().int().min(1).max(250),
-  })
-  .strict();
-const pollSchema = z
-  .object({
-    question: text,
-    options: z
-      .array(z.string().trim().min(1).max(120))
-      .min(2)
-      .max(8)
-      .refine(
-        (options) =>
-          new Set(options.map((o) => o.toLowerCase())).size === options.length,
-        'Options must be distinct.',
-      ),
   })
   .strict();
 const slotSchema = z
@@ -237,6 +224,56 @@ export function createApp(config: Config, store: Store, logging = true) {
       ),
     ),
   );
+  app.put('/api/polls/:id', async (req, res) =>
+    res.json(
+      await service.editPoll(user(res), id(req), pollSchema.parse(req.body)),
+    ),
+  );
+  app.post('/api/polls/:id/selections', async (req, res) => {
+    const input = z
+      .object({ optionIds: z.array(z.string().min(1).max(100)).min(1).max(8) })
+      .strict()
+      .parse(req.body);
+    res.json(await service.selectPoll(user(res), id(req), input.optionIds));
+  });
+  app.delete('/api/polls/:id/selections/me', async (req, res) =>
+    res.json(await service.cancelPoll(user(res), id(req))),
+  );
+  app.post('/api/polls/:id/state', async (req, res) => {
+    const input = z
+      .object({ state: z.enum(['draft', 'open', 'closed', 'archived']) })
+      .strict()
+      .parse(req.body);
+    res.json(await service.pollState(user(res), id(req), input.state));
+  });
+  app.get('/api/polls/:id/participants', async (req, res) => {
+    const query = z
+      .object({
+        search: z.string().max(160).optional(),
+        optionId: z.string().max(100).optional(),
+        sort: z.enum(['name', 'date']).optional(),
+        direction: z.enum(['asc', 'desc']).optional(),
+        page: z.coerce.number().int().min(1).max(10000).optional(),
+        pageSize: z.coerce.number().int().min(1).max(100).optional(),
+        status: z.enum(['confirmed', 'cancelled']).optional(),
+      })
+      .strict()
+      .parse(req.query);
+    res.json(await service.pollParticipants(user(res), id(req), query));
+  });
+  app.delete('/api/polls/:id/participants/:participantId', async (req, res) => {
+    z.object({ confirm: z.literal(true) })
+      .strict()
+      .parse(req.body);
+    res.json(
+      await service.cancelPoll(
+        user(res),
+        id(req),
+        z.string().min(1).max(100).parse(req.params.participantId),
+        true,
+      ),
+    );
+  });
   app.post('/api/polls/:id/close', async (req, res) =>
     res.json(await service.closePoll(user(res), id(req))),
   );

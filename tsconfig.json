@@ -11,5 +11,5 @@
     "resolveJsonModule": true,
     "noEmit": true
   },
-  "include": ["frontend", "shared", "vite.config.ts", "tests/frontend.test.tsx"]
+  "include": ["frontend", "shared", "vite.config.ts", "tests/*.test.tsx"]
 }

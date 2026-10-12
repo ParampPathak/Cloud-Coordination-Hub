@@ -7,7 +7,7 @@ const input = z
   .object({
     email: z.email(),
     name: z.string().min(1).max(80),
-    role: z.enum(['user', 'organizer']),
+    role: z.enum(['user', 'organizer', 'admin']),
     password: z.string(),
   })
   .parse({ email, name, role, password: process.env.HUB_USER_PASSWORD });

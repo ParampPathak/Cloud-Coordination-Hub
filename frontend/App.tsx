@@ -1,3 +1,4 @@
+import { PollCard, PollForm } from './Polls';
 import {
   useCallback,
   useEffect,
@@ -29,7 +30,6 @@ import {
 import { api, ApiError } from './api';
 import type {
   EventView,
-  PollView,
   Registration,
   Slot,
   Snapshot,
@@ -214,10 +214,12 @@ function Login({
 
 function Modal({
   title,
+  className = '',
   children,
   onClose,
 }: {
   title: string;
+  className?: string;
   children: ReactNode;
   onClose: () => void;
 }) {
@@ -230,7 +232,7 @@ function Modal({
   return (
     <dialog
       ref={ref}
-      className="modal"
+      className={`modal ${className}`}
       onCancel={onClose}
       aria-labelledby="modal-title"
     >
@@ -551,102 +553,6 @@ export function EventCard({
     </article>
   );
 }
-function PollCard({
-  poll,
-  user,
-  busy,
-  act,
-}: {
-  poll: PollView;
-  user: User;
-  busy: boolean;
-  act: (path: string, method: string, message: string, body?: unknown) => void;
-}) {
-  const [selection, setSelection] = useState<number | null>(null);
-  return (
-    <article className="panel poll-card">
-      <div className="section-heading">
-        <span className={`badge ${poll.closed ? 'neutral' : 'green'}`}>
-          {poll.closed ? 'Closed' : 'Active poll'}
-        </span>
-        <span className="muted">
-          {poll.totalVotes} vote{poll.totalVotes === 1 ? '' : 's'}
-        </span>
-      </div>
-      <h3>{poll.question}</h3>
-      <fieldset disabled={busy || poll.closed || poll.myVote !== null}>
-        <legend className="sr-only">Choose an answer</legend>
-        {poll.options.map((option, i) => (
-          <label
-            className={`poll-option ${selection === i || poll.myVote === i ? 'selected' : ''}`}
-            key={i}
-          >
-            <div className="poll-option-label">
-              <span>
-                <input
-                  type="radio"
-                  name={`poll-${poll.id}`}
-                  checked={poll.myVote === i || selection === i}
-                  onChange={() => setSelection(i)}
-                />
-                {option}
-                {poll.myVote === i && <Check size={15} />}
-              </span>
-              <strong>
-                {poll.totalVotes
-                  ? Math.round((poll.counts[i] / poll.totalVotes) * 100)
-                  : 0}
-                %
-              </strong>
-            </div>
-            <div className="poll-bar">
-              <span
-                style={{
-                  width: `${poll.totalVotes ? (poll.counts[i] / poll.totalVotes) * 100 : 0}%`,
-                }}
-              />
-            </div>
-          </label>
-        ))}
-      </fieldset>
-      <div className="poll-footer">
-        {poll.myVote !== null ? (
-          <span className="success-inline">
-            <Check size={16} />
-            Your vote is recorded
-          </span>
-        ) : (
-          <button
-            className="button primary"
-            disabled={selection === null || busy || poll.closed}
-            onClick={() =>
-              act(
-                `/polls/${poll.id}/votes`,
-                'POST',
-                'Your vote has been recorded.',
-                { option: selection },
-              )
-            }
-          >
-            Submit vote
-            <ArrowRight size={16} />
-          </button>
-        )}
-        {poll.organizerId === user.id && !poll.closed && (
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() =>
-              act(`/polls/${poll.id}/close`, 'POST', 'Poll closed.')
-            }
-          >
-            Close poll
-          </button>
-        )}
-      </div>
-    </article>
-  );
-}
 function SlotCard({
   slot,
   user,
@@ -929,7 +835,11 @@ export default function App() {
             <div>
               <strong>{user.name}</strong>
               <span>
-                {user.role === 'organizer' ? 'Organizer' : 'Attendee'}
+                {user.role === 'admin'
+                  ? 'Administrator'
+                  : user.role === 'organizer'
+                    ? 'Organizer'
+                    : 'Attendee'}
               </span>
             </div>
             <button
@@ -1003,28 +913,30 @@ export default function App() {
                         : 'Your identity and access in the project workspace.'}
               </p>
             </div>
-            {user.role === 'organizer' && path !== '/account' && (
-              <button
-                className="button primary"
-                onClick={() =>
-                  setModal({
-                    kind:
-                      path === '/polls'
-                        ? 'poll'
-                        : path === '/scheduling'
-                          ? 'slot'
-                          : 'event',
-                  })
-                }
-              >
-                <Plus size={17} />
-                {path === '/polls'
-                  ? 'Create poll'
-                  : path === '/scheduling'
-                    ? 'Create time slot'
-                    : 'Create event'}
-              </button>
-            )}
+            {(user.role === 'organizer' ||
+              (user.role === 'admin' && path === '/polls')) &&
+              path !== '/account' && (
+                <button
+                  className="button primary"
+                  onClick={() =>
+                    setModal({
+                      kind:
+                        path === '/polls'
+                          ? 'poll'
+                          : path === '/scheduling'
+                            ? 'slot'
+                            : 'event',
+                    })
+                  }
+                >
+                  <Plus size={17} />
+                  {path === '/polls'
+                    ? 'Create poll'
+                    : path === '/scheduling'
+                      ? 'Create time slot'
+                      : 'Create event'}
+                </button>
+              )}
           </div>
           {error && (
             <div className="alert error" role="alert">
@@ -1337,14 +1249,20 @@ export default function App() {
                     <h2>{user.name}</h2>
                     <p className="muted">{user.email}</p>
                     <span className="badge green">
-                      {user.role === 'organizer' ? 'Organizer' : 'Attendee'}
+                      {user.role === 'admin'
+                        ? 'Administrator'
+                        : user.role === 'organizer'
+                          ? 'Organizer'
+                          : 'Attendee'}
                     </span>
                     <dl>
                       <dt>Access</dt>
                       <dd>
-                        {user.role === 'organizer'
-                          ? 'Create and manage your own events, polls, and appointment slots.'
-                          : 'Register for events, vote in polls, and reserve appointments.'}
+                        {user.role === 'admin'
+                          ? 'Manage polls and identified participants across this workspace.'
+                          : user.role === 'organizer'
+                            ? 'Create and manage your own events, polls, and appointment slots.'
+                            : 'Register for events, vote in polls, and reserve appointments.'}
                       </dd>
                       <dt>Session</dt>
                       <dd>
@@ -1396,6 +1314,7 @@ export default function App() {
       </div>
       {modal && (
         <Modal
+          className={modal.kind === 'poll' ? 'poll-modal' : ''}
           title={
             modal.event
               ? 'Edit event'
@@ -1407,15 +1326,25 @@ export default function App() {
           }
           onClose={() => setModal(null)}
         >
-          <CreateForm
-            kind={modal.kind}
-            event={modal.event}
-            onClose={() => setModal(null)}
-            onSaved={() => {
-              setNotice('Saved to the database.');
-              void reload();
-            }}
-          />
+          {modal.kind === 'poll' ? (
+            <PollForm
+              onCancel={() => setModal(null)}
+              onSaved={() => {
+                void reload();
+                setModal(null);
+              }}
+            />
+          ) : (
+            <CreateForm
+              kind={modal.kind}
+              event={modal.event}
+              onClose={() => setModal(null)}
+              onSaved={() => {
+                setNotice('Saved to the database.');
+                void reload();
+              }}
+            />
+          )}
         </Modal>
       )}
       {attendees && (

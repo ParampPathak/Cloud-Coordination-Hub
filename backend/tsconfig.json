@@ -15,6 +15,7 @@
     "../shared",
     "../scripts/*.ts",
     "../tests/backend.test.ts",
+    "../tests/polls.test.ts",
     "../tests/dynamodb.test.ts"
   ]
 }

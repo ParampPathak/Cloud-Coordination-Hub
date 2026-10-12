@@ -13,14 +13,14 @@ Teams often juggle forms, spreadsheets, and scheduling tools. Cloud Coordination
 - Dashboard with stored-data totals and scoped recent activity.
 - Organizer-owned events, editable capacity, confirmed registrations, FIFO waitlists, atomic cancellation/promotion and duplicate protection.
 - Owner-only attendee lists and safe downloadable CSV export.
-- Poll publishing, one authenticated vote per person, real results visualization and closing polls.
+- Standard and multiple-choice polls, per-topic capacity signups, configurable organizer voting, changes/cancellation and result visibility, draft/open/closed/archive lifecycle, and owner/admin participant management.
 - Appointment slots with concurrency-safe single booking and cancellation.
 - Password authentication, public attendee signup, trusted organizer provisioning, revocable database sessions and server-side ownership checks.
 - Persistent local SQLite and a DynamoDB adapter with conditional transactions. SQLite is explicitly development-only.
 - Responsive desktop/mobile interface, accessible forms/modals, real loading/empty/error states.
 - Docker, CI verification, CloudFormation and offline-image deployment preparation.
 
-CSV/Excel import, poll-to-event automation, editable poll drafts, multi-workspace tenancy and advanced scheduling conflict rules are final-project milestones, not functioning buttons.
+CSV/Excel import, universal CSV/Excel poll exports, poll-to-event automation, multi-workspace tenancy and advanced scheduling conflict rules are final-project milestones, not functioning buttons.
 
 ## Screenshots
 
@@ -89,6 +89,32 @@ npm start
 ```
 
 Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` deliberately requires HTTPS and shared DynamoDB. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
+
+## Stage 1 polling
+
+Create a poll from **Polls > Create poll**. Standard voting remains the default. Select **Capacity-limited signup** to set a capacity for each topic, or **Multiple choice** to set a maximum and optional topic capacities (blank means unlimited). Capacity signups identify participants; ordinary polls are anonymous by default. Advanced settings control organizer voting (disabled for new polls), changes, cancellation, result visibility and draft creation.
+
+**Manage poll** is available to the owner and trusted administrators. Open/close/archive polls, edit settings/capacities, and search/filter/sort/page through identified participants. Removing a participant requires confirmation and cancels all their active selections, releasing places. Capacity reductions below confirmed signups and unsafe option/type/anonymity/selection-limit edits are rejected. Anonymous polls provide aggregate management only. Closed polls can reopen; archived polls preserve history and cannot reopen. Exports for polls are scheduled for Stage 4.
+
+Administrator access is application-wide for polls in this single-workspace prototype. Provision it through the existing trusted command (never public signup):
+
+```powershell
+$env:HUB_USER_PASSWORD = [System.Net.NetworkCredential]::new('', (Read-Host 'Administrator password' -AsSecureString)).Password
+npm run user:create -- 'admin@example.test' 'Campus Admin' admin
+Remove-Item Env:HUB_USER_PASSWORD
+```
+
+SQLite runs migration `001-polls` automatically when the application next opens the database. Before upgrading an existing database, stop the backend and copy the complete SQLite database safely to a backup. Existing votes, IDs, ownership and closed state remain intact; legacy polls retain organizer voting and existing result visibility. Missing historical vote timestamps remain unknown. This implementation has not opened or migrated your live `data/hub.sqlite`. Recovery: stop the backend, retain the current database/WAL files separately, restore the verified pre-upgrade backup, and use the previous application version; do not overwrite new data without review.
+
+Legacy DynamoDB polls are read compatibly and upgraded on mutation. For an explicit, resumable migration on a configured **local** DynamoDB database:
+
+```powershell
+node --import tsx scripts/migrate-polls.ts
+```
+
+The command also works with SQLite (which migrates when opened). No AWS connection/deployment is needed or performed. Polls remain bounded to 2-8 options, 2,000 active participants, 4,000 stored historical selections, and a 290 KB mutation limit. Server transactions enforce capacity and atomic switching; a full destination leaves the original registration intact. Multiple-choice percentages are per participant and can sum above 100%.
+
+To check the feature, use separate organizer/student/admin sessions: publish a signup with capacity one, fill it, verify the full state in another student session, cancel and rebook, try switching to a full topic, inspect participants as owner/admin, and verify unrelated users cannot access the list. Run `npm run check`, `npm run format:check`, and `npm run test:e2e`; run `npm run test:dynamodb` when DynamoDB Local is available. Stage 2 office-hour redesign has not started.
 
 ## Docker and DynamoDB Local
 
