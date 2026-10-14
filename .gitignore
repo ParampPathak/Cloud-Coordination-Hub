@@ -153,6 +153,12 @@ data/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+*.sqlite.bak*
+*.pem
+*.key
 playwright-report/
 test-results/
 *.local

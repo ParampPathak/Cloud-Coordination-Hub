@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { z, ZodError } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
-import { allowedOrigins, type Config } from './config.js';
+import { allowedOrigins, packageRoot, type Config } from './config.js';
 import type { Store } from './store.js';
 import { HubService, HttpError } from './service.js';
 import {
@@ -72,9 +72,26 @@ export function createApp(config: Config, store: Store, logging = true) {
   const service = new HubService(store);
   const origins = allowedOrigins(config);
   app.disable('x-powered-by');
-  // The deployed application must be reachable only from the ALB security group.
-  if (config.NODE_ENV === 'production') app.set('trust proxy', 1);
-  app.use(helmet());
+  // Single-instance SQLite is behind a local Nginx proxy. Retain the ALB mode.
+  if (config.NODE_ENV === 'production')
+    app.set(
+      'trust proxy',
+      config.DATABASE_DRIVER === 'sqlite' ? 'loopback' : 1,
+    );
+  app.use(
+    helmet({
+      // Browsers must not upgrade demo HTTP assets to unavailable HTTPS.
+      ...(config.NODE_ENV === 'production' &&
+      config.APP_ORIGIN.startsWith('http:')
+        ? {
+            strictTransportSecurity: false,
+            contentSecurityPolicy: {
+              directives: { 'upgrade-insecure-requests': null },
+            },
+          }
+        : {}),
+    }),
+  );
   app.use(express.json({ limit: '32kb' }));
   app.use(cookieParser());
   app.use((req, res, next) => {
@@ -159,7 +176,9 @@ export function createApp(config: Config, store: Store, logging = true) {
   const cookieOptions = {
     httpOnly: true,
     sameSite: 'lax' as const,
-    secure: config.NODE_ENV === 'production',
+    secure:
+      config.NODE_ENV === 'production' &&
+      config.APP_ORIGIN.startsWith('https:'),
     path: '/',
     maxAge: 8 * 60 * 60 * 1000,
   };
@@ -254,7 +273,7 @@ export function createApp(config: Config, store: Store, logging = true) {
   app.use('/api', (_req, _res, next) =>
     next(new HttpError(404, 'API endpoint was not found.')),
   );
-  const assets = resolve('dist/frontend');
+  const assets = resolve(packageRoot(), 'dist/frontend');
   app.use(express.static(assets));
   app.get('/{*path}', (_req, res, next) =>
     res.sendFile(

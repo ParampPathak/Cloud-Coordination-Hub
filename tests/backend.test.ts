@@ -459,6 +459,33 @@ describe('API authentication and validation', () => {
   });
 });
 describe('Local-only configuration safeguards', () => {
+  it('keeps HTTPS production cookies secure and validates the exact origin', async () => {
+    const password = 'TestingPassword19';
+    const secureConfig = readConfig({
+      NODE_ENV: 'production',
+      APP_ORIGIN: 'https://hub.example',
+    });
+    await createUser(store, 'secure@example.test', 'Secure User', password);
+    const app = createApp(secureConfig, store, false);
+    const response = await request(app)
+      .post('/api/auth/login')
+      .set('Origin', secureConfig.APP_ORIGIN)
+      .send({ email: 'secure@example.test', password });
+    expect(response.status).toBe(200);
+    expect(String(response.headers['set-cookie'])).toContain('Secure');
+    expect(response.headers['strict-transport-security']).toBeDefined();
+    expect(response.headers['content-security-policy']).toContain(
+      'upgrade-insecure-requests',
+    );
+    expect(
+      (
+        await request(app)
+          .post('/api/auth/login')
+          .set('Origin', 'http://hub.example')
+          .send({ email: 'secure@example.test', password })
+      ).status,
+    ).toBe(403);
+  });
   it('uses an absolute shared database path and keeps the memory test database unchanged', () => {
     expect(readConfig({}).SQLITE_PATH).toMatch(/[\\/]data[\\/]hub\.sqlite$/);
     expect(readConfig({ SQLITE_PATH: ':memory:' }).SQLITE_PATH).toBe(
@@ -502,13 +529,37 @@ describe('Local-only configuration safeguards', () => {
   it('rejects invalid ports and unsafe production settings', () => {
     expect(() => readConfig({ PORT: '0' })).toThrow();
     expect(() => readConfig({ NODE_ENV: 'production' })).toThrow('HTTPS');
+    expect(
+      readConfig({ NODE_ENV: 'production', APP_ORIGIN: 'https://hub.example' })
+        .DATABASE_DRIVER,
+    ).toBe('sqlite');
     expect(() =>
-      readConfig({ NODE_ENV: 'production', APP_ORIGIN: 'https://hub.example' }),
-    ).toThrow('shared DynamoDB');
+      readConfig({
+        NODE_ENV: 'production',
+        APP_ORIGIN: 'https://hub.example',
+        SQLITE_PATH: ':memory:',
+      }),
+    ).toThrow('persistent');
+    expect(
+      readConfig({
+        NODE_ENV: 'production',
+        APP_ORIGIN: 'http://203.0.113.10',
+        ALLOW_INSECURE_HTTP: 'true',
+      }).APP_ORIGIN,
+    ).toBe('http://203.0.113.10');
+    expect(() =>
+      readConfig({ APP_ORIGIN: 'https://hub.example/path' }),
+    ).toThrow('origin');
   });
 });
 
 describe('Seeded demo authentication from supported local UI origins', () => {
+  it('refuses seeding existing event data even when there are no users', async () => {
+    await service.createEvent(organizer, eventInput);
+    await expect(createDemoData(store)).rejects.toThrow('empty local database');
+    expect(await store.list('user')).toHaveLength(0);
+    expect(await store.list('event')).toHaveLength(1);
+  });
   it('authenticates seeded organizer and attendee, preserves CSRF checks and does not reseed existing data', async () => {
     const { password } = await createDemoData(store);
     const app = createApp(

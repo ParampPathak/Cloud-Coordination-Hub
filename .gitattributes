@@ -2,3 +2,4 @@
 *.png binary
 *.sh text eol=lf
 *.ps1 text eol=lf
+*.service text eol=lf

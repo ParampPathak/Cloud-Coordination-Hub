@@ -6,10 +6,11 @@ import type { Store } from './store.js';
 export async function createDemoData(store: Store) {
   if (!['Local SQLite', 'DynamoDB Local'].includes(store.kind))
     throw new Error('Demo data is local-only.');
-  if ((await store.list('user')).length)
-    throw new Error(
-      'Seed requires an empty local database to preserve your data.',
-    );
+  for (const kind of ['user', 'session', 'event', 'poll', 'slot', 'activity'])
+    if ((await store.list(kind)).length)
+      throw new Error(
+        'Seed requires an empty local database to preserve your data.',
+      );
   const password = `Demo9-${randomBytes(12).toString('base64url')}`;
   const organizer = await createUser(
     store,
@@ -18,7 +19,12 @@ export async function createDemoData(store: Store) {
     password,
     'organizer',
   );
-  await createUser(store, 'attendee@example.test', 'Jordan Lee', password);
+  const attendee = await createUser(
+    store,
+    'attendee@example.test',
+    'Jordan Lee',
+    password,
+  );
   const service = new HubService(store);
   const future = (days: number, hour: number) => {
     const date = new Date();
@@ -26,7 +32,7 @@ export async function createDemoData(store: Store) {
     date.setHours(Math.floor(hour), Math.round((hour % 1) * 60), 0, 0);
     return date.toISOString();
   };
-  await service.createEvent(organizer, {
+  const event = await service.createEvent(organizer, {
     title: 'Cloud architecture studio',
     description:
       'Bring your architecture diagrams. We will explore secure networking, service choices, and deployment tradeoffs together.',
@@ -42,10 +48,12 @@ export async function createDemoData(store: Store) {
     startsAt: future(4, 10),
     capacity: 12,
   });
-  await service.createPoll(organizer, {
+  await service.register(attendee, event.id);
+  const poll = await service.createPoll(organizer, {
     question: 'When should we hold our next team workshop?',
     options: ['Tuesday afternoon', 'Wednesday morning', 'Thursday afternoon'],
   });
+  await service.vote(attendee, poll.id, 0);
   await service.createSlot(organizer, {
     title: 'Project office hours',
     location: 'Engineering Building · Room 108',

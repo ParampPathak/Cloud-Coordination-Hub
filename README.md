@@ -16,7 +16,7 @@ Teams often juggle forms, spreadsheets, and scheduling tools. Cloud Coordination
 - Poll publishing, one authenticated vote per person, real results visualization and closing polls.
 - Appointment slots with concurrency-safe single booking and cancellation.
 - Password authentication, public attendee signup, trusted organizer provisioning, revocable database sessions and server-side ownership checks.
-- Persistent local SQLite and a DynamoDB adapter with conditional transactions. SQLite is explicitly development-only.
+- Persistent local SQLite and a DynamoDB adapter with conditional transactions. SQLite supports local development and the documented single-instance EC2 deployment.
 - Responsive desktop/mobile interface, accessible forms/modals, real loading/empty/error states.
 - Docker, CI verification, CloudFormation and offline-image deployment preparation.
 
@@ -32,7 +32,7 @@ Actual local prototype screenshots, using SQLite-backed sample test records; **n
 
 ## Stack and repository
 
-React, TypeScript, Vite, Tailwind CSS and React Router; Node **24 LTS**, Express 5, Zod, AWS SDK v3; Node SQLite for local persistence and DynamoDB for cloud; Vitest/Testing Library/Supertest and an installed-browser smoke test; Docker, GitHub Actions and CloudFormation. `package-lock.json` pins the dependency resolution. Node 24's built-in SQLite interface is experimental and confined to the local adapter.
+React, TypeScript, Vite, Tailwind CSS and React Router; Node **24 LTS**, Express 5, Zod, AWS SDK v3; Node SQLite for local/single-instance persistence and an optional DynamoDB cloud adapter; Vitest/Testing Library/Supertest and an installed-browser smoke test; Docker, GitHub Actions and CloudFormation. `package-lock.json` pins the dependency resolution. Node 24's built-in SQLite interface is experimental; the single-instance deployment accepts that limitation for the classroom project.
 
 ```text
 frontend/             React pages, forms, styling and API client
@@ -58,7 +58,7 @@ npm run dev
 
 Open **http://localhost:5173**. The seed command prints a fresh temporary password for `organizer@example.test` and `attendee@example.test`. It never writes that password to source and refuses to overwrite an existing database. Do not commit or include it in presentation evidence. Create additional attendees through the sign-up interface. If you prefer empty data, skip the seed and provision your own organizer below.
 
-The backend listens on `127.0.0.1:3000`; Vite proxies `/api`. SQLite lives at `data/hub.sqlite` and persists across restarts. Relative `SQLITE_PATH` values resolve from the application package root for both seeding and the server; each prints its resolved database path. No AWS credentials are needed, requested, or looked up by this mode. Local development permits both `localhost` and `127.0.0.1` on the API port (default 3000) and Vite port 5173. Production still requires the exact configured HTTPS `APP_ORIGIN`.
+The backend listens on `127.0.0.1:3000`; Vite proxies `/api`. SQLite lives at `data/hub.sqlite` and persists across restarts. Relative `SQLITE_PATH` values resolve from the application package root for both seeding and the server; each prints its resolved database path. No AWS credentials are needed, requested, or looked up by this mode. Local development permits both `localhost` and `127.0.0.1` on the API port (default 3000) and Vite port 5173. Production requires the exact configured `APP_ORIGIN`, with HTTPS by default and the documented explicit classroom HTTP exception.
 
 Optional configuration:
 
@@ -88,7 +88,7 @@ $env:APP_ORIGIN = 'http://localhost:3000'
 npm start
 ```
 
-Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` deliberately requires HTTPS and shared DynamoDB. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
+Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` supports persistent SQLite on one instance or the existing DynamoDB adapter. HTTPS is the default; disposable classroom HTTP requires explicit `ALLOW_INSECURE_HTTP=true` with SQLite. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
 
 ## Docker and DynamoDB Local
 
@@ -127,6 +127,14 @@ Set `HUB_BROWSER_PATH` to an installed Chromium-compatible executable if needed.
 
 GitHub Actions installs locked dependencies, checks formatting/lint/types, runs application and local-DynamoDB tests, builds frontend/backend, validates CloudFormation and builds the Docker image. After successful main-branch CI, the existing CD workflow packages build artifacts using the same root package layout. Both workflows have read-only contents permission and do not publish an image or deploy AWS resources. Cloud deployment is not enabled.
 
+## Single-instance Ubuntu EC2 preparation
+
+For the classroom presentation, follow [AWS_EC2_DEPLOYMENT.md](docs/AWS_EC2_DEPLOYMENT.md): one manually launched Ubuntu instance, Nginx, systemd, Node 24, built React/Express and persistent SQLite outside code releases. This preparation has not been deployed or pushed. No AWS credentials or GitHub Actions CD configuration are required. The existing cloud architecture below remains an alternative, not a prerequisite for this path.
+
+Added commands: `npm run start:production` enforces production validation; `npm run test:production` builds and verifies production serving, authentication, origin checks, demo seed safeguards and data/session persistence across a process restart. `npm run user:create:built` and `npm run demo:seed:built` use compiled CLI files after building. Production demo seeding requires an explicit `ALLOW_DEMO_SEED=true` and empty SQLite storage. Existing development scripts are unchanged.
+
+See [demo checklist](docs/AWS_DEMO_CHECKLIST.md), [troubleshooting](docs/AWS_TROUBLESHOOTING.md), and [preparation verification](docs/DEPLOYMENT_VERIFICATION.md). The optional `infrastructure/single-ec2.yaml` prepares one instance/security group only; account-specific Sandbox permissions must be checked manually.
+
 ## Prepared AWS architecture
 
 ```mermaid
@@ -149,7 +157,7 @@ An existing permitted certificate/DNS and suitable instance profile/PassRole are
 
 ## API and security
 
-See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and [architecture](docs/midpoint/architecture.md). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; production uses role-based AWS access. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
+See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and [architecture](docs/midpoint/architecture.md). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; the optional DynamoDB deployment uses role-based AWS access; the single-instance SQLite deployment does not access AWS APIs. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
 
 ## Midpoint materials and roadmap
 

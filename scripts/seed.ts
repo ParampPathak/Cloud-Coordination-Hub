@@ -3,11 +3,17 @@ import { createStore } from '../backend/src/store.js';
 import { createDemoData } from '../backend/src/demo-data.js';
 const config = readConfig();
 if (
-  config.NODE_ENV === 'production' ||
+  (config.NODE_ENV === 'production' &&
+    !(
+      config.DATABASE_DRIVER === 'sqlite' &&
+      process.env.ALLOW_DEMO_SEED === 'true'
+    )) ||
   config.ALLOW_AWS === 'true' ||
   (config.DATABASE_DRIVER === 'dynamodb' && !config.DYNAMODB_ENDPOINT)
 )
-  throw new Error('Demo seed is local-only.');
+  throw new Error(
+    'Demo seed requires local storage; production SQLite also requires ALLOW_DEMO_SEED=true.',
+  );
 const store = createStore(config);
 if (config.DATABASE_DRIVER === 'sqlite')
   console.log(`Local SQLite database: ${config.SQLITE_PATH}`);

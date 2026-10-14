@@ -29,12 +29,14 @@ jobs:
         env:
           DYNAMODB_ENDPOINT: http://127.0.0.1:8000
       - run: npm run test:e2e
+      - run: node scripts/production-smoke.mjs
+      - run: bash -n scripts/deploy-ec2.sh
       - run: npm run infra:validate
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install -r infrastructure/requirements.txt
-      - run: cfn-lint infrastructure/hub.yaml
+      - run: cfn-lint infrastructure/hub.yaml infrastructure/single-ec2.yaml
       - run: docker build -t cloud-coordination-hub:ci .
       - uses: actions/upload-artifact@v7
         with:
