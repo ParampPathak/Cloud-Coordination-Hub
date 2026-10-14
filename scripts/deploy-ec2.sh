@@ -31,7 +31,7 @@ if [[ ! -x $ROOT/node/bin/node ]]; then
   tar -xJf "$download/$archive" -C "$ROOT/node" --strip-components=1
   rm -rf -- "$download"
 fi
-export PATH="$ROOT/node/bin:/usr/bin:/bin"
+export PATH="$ROOT/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 [[ $(node -p 'process.versions.node.split(".")[0]') == 24 ]] || { echo 'Node 24 required.' >&2; exit 1; }
 id hub >/dev/null 2>&1 || useradd --system --user-group --home-dir "$DATA" --shell /usr/sbin/nologin hub
 install -d -o hub -g hub -m 0700 "$DATA"
@@ -51,13 +51,15 @@ runuser -u hub -- bash -c 'set -e; cd "$1"; npm ci --include=dev --no-audit --no
 db=$(runuser -u hub -- bash -c 'cd "$1"; node --env-file="$2" --input-type=module -e '\''import {readConfig} from "./dist/backend/backend/src/config.js"; const c=readConfig(); if(c.NODE_ENV!=="production" || c.DATABASE_DRIVER!=="sqlite" || c.ALLOW_AWS!=="false" || c.HOST!=="127.0.0.1" || !c.SQLITE_PATH.startsWith("/var/lib/cloud-coordination-hub/") || c.APP_ORIGIN.toUpperCase().includes("REPLACE")) throw Error("Configure production SQLite, loopback HOST, data path and APP_ORIGIN first."); console.log(c.SQLITE_PATH);'\''' bash "$release" "$ENV_FILE")
 port=$(runuser -u hub -- bash -c 'cd "$1"; node --env-file="$2" --input-type=module -e '\''import {readConfig} from "./dist/backend/backend/src/config.js"; console.log(readConfig().PORT);'\''' bash "$release" "$ENV_FILE")
 chown -R root:root "$release"
-chmod -R go-w "$release"
-previous=$(readlink -f "$ROOT/current" || true)
+chmod -R a+rX,go-w "$release"
+previous=''
+if [[ -L $ROOT/current ]]; then previous=$(readlink -f "$ROOT/current" || true); fi
 rollback() {
   systemctl stop "$SERVICE" || true
-  if [[ -n $previous && -d $previous ]]; then
+  if [[ -n $previous && $previous != "$ROOT/current" && -d $previous ]]; then
     ln -sfn "$previous" "$ROOT/current.rollback"
     mv -Tf "$ROOT/current.rollback" "$ROOT/current"
+    systemctl reset-failed "$SERVICE" || true
     systemctl restart "$SERVICE" || true
   fi
   echo 'Deployment failed. Previous release restored when available; database was not replaced. Inspect journalctl.' >&2
@@ -73,6 +75,7 @@ ln -sfn "$release" "$ROOT/current.next"
 mv -Tf "$ROOT/current.next" "$ROOT/current"
 systemctl daemon-reload
 systemctl enable "$SERVICE"
+systemctl reset-failed "$SERVICE"
 systemctl restart "$SERVICE"
 ready=false
 for _ in {1..30}; do
