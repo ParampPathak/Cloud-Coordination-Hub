@@ -15,6 +15,19 @@ export interface Registration {
   status: 'confirmed' | 'waitlisted';
   sequence: number;
   createdAt: string;
+  groupId?: string;
+}
+export interface EventGroup {
+  id: string;
+  name: string;
+  capacity: number;
+}
+export interface GroupConfiguration {
+  count: number;
+  capacity: number;
+  names?: string[];
+  autoAssign: boolean;
+  allowSelfSelection: boolean;
 }
 export interface HubEvent {
   id: string;
@@ -27,6 +40,8 @@ export interface HubEvent {
   createdAt: string;
   nextSequence: number;
   registrations: Registration[];
+  groups?: EventGroup[];
+  groupSettings?: Pick<GroupConfiguration, 'autoAssign' | 'allowSelfSelection'>;
 }
 export interface Poll {
   id: string;
@@ -83,6 +98,41 @@ export interface Slot {
   organizerId: string;
   createdAt: string;
   booking: { userId: string; name: string } | null;
+  bookings?: AppointmentBooking[];
+  capacity?: number;
+  bookedCount?: number;
+  blocked?: boolean;
+  timeZone?: string;
+  scheduleId?: string;
+  bookingLeadMinutes?: number;
+  cancelBeforeMinutes?: number;
+  maxActiveBookings?: number;
+}
+export interface AppointmentBooking {
+  userId: string;
+  name: string;
+  reason: string;
+  createdAt: string | null;
+}
+export interface ScheduleInput {
+  title: string;
+  location: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  timeZone: string;
+  durationMinutes: number;
+  bufferMinutes: number;
+  capacity: number;
+  weeks: number;
+  breaks: { start: string; end: string }[];
+  bookingLeadMinutes: number;
+  cancelBeforeMinutes: number;
+  maxActiveBookings: number;
+  requestId: string;
+}
+export interface GroupView extends EventGroup {
+  members: { userId: string; name: string }[];
 }
 export interface Activity {
   id: string;

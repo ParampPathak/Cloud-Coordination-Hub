@@ -1,3 +1,5 @@
+import { OfficeHoursBuilder, SlotCard } from './Scheduling';
+import { Groups } from './Groups';
 import { PollCard, PollForm } from './Polls';
 import {
   useCallback,
@@ -28,13 +30,7 @@ import {
   X,
 } from 'lucide-react';
 import { api, ApiError } from './api';
-import type {
-  EventView,
-  Registration,
-  Slot,
-  Snapshot,
-  User,
-} from '../shared/types';
+import type { EventView, Registration, Snapshot, User } from '../shared/types';
 
 const dateTime = (date: string) =>
   new Date(date).toLocaleString(undefined, {
@@ -301,7 +297,27 @@ function CreateForm({
             description: field('description'),
             location: field('location'),
             startsAt: new Date(field('startsAt')).toISOString(),
-            capacity: Number(field('capacity')),
+            capacity:
+              !event && field('grouped')
+                ? Number(field('groupCount')) * Number(field('groupCapacity'))
+                : Number(field('capacity')),
+            ...(!event && field('grouped')
+              ? {
+                  groupConfiguration: {
+                    count: Number(field('groupCount')),
+                    capacity: Number(field('groupCapacity')),
+                    autoAssign: !!field('autoAssign'),
+                    allowSelfSelection: !!field('selfSelect'),
+                    ...(field('groupNames').trim()
+                      ? {
+                          names: field('groupNames')
+                            .split('\n')
+                            .map((n) => n.trim()),
+                        }
+                      : {}),
+                  },
+                }
+              : {}),
           },
         );
       onSaved();
@@ -410,6 +426,53 @@ function CreateForm({
           </small>
         </>
       )}
+      {kind === 'event' && !event && (
+        <details>
+          <summary>Groups (optional)</summary>
+          <label className="check-label">
+            <input type="checkbox" name="grouped" />
+            Divide this event into groups
+          </label>
+          <div className="form-row">
+            <label>
+              Number of groups
+              <input
+                name="groupCount"
+                type="number"
+                min={1}
+                max={50}
+                defaultValue={9}
+              />
+            </label>
+            <label>
+              Students per group
+              <input
+                name="groupCapacity"
+                type="number"
+                min={1}
+                max={50}
+                defaultValue={4}
+              />
+            </label>
+          </div>
+          <label>
+            Group names (optional, one per line)
+            <textarea name="groupNames" rows={3} />
+          </label>
+          <label className="check-label">
+            <input type="checkbox" name="autoAssign" defaultChecked />
+            Automatically assign confirmed students
+          </label>
+          <label className="check-label">
+            <input type="checkbox" name="selfSelect" defaultChecked />
+            Allow students to join or change groups
+          </label>
+          <small>
+            Grouped capacity is the number of groups × students per group
+            (maximum 250).
+          </small>
+        </details>
+      )}
       {error && (
         <p role="alert" className="form-error">
           {error}
@@ -448,6 +511,7 @@ export function EventCard({
   act,
   edit,
   attendees,
+  onChanged = () => {},
 }: {
   event: EventView;
   user: User;
@@ -455,6 +519,7 @@ export function EventCard({
   act: (path: string, method: string, message: string) => void;
   edit: () => void;
   attendees: () => void;
+  onChanged?: () => void;
 }) {
   const date = new Date(event.startsAt);
   const ended = date.getTime() <= Date.now();
@@ -550,71 +615,7 @@ export function EventCard({
           </div>
         )}
       </div>
-    </article>
-  );
-}
-function SlotCard({
-  slot,
-  user,
-  busy,
-  act,
-}: {
-  slot: Slot;
-  user: User;
-  busy: boolean;
-  act: (path: string, method: string, message: string) => void;
-}) {
-  const mine = slot.booking?.userId === user.id;
-  const past = Date.parse(slot.startsAt) <= Date.now();
-  return (
-    <article className="panel slot-card">
-      <div className="slot-icon">
-        <Clock3 size={22} />
-      </div>
-      <div className="slot-info">
-        <span
-          className={`badge ${mine ? 'green' : slot.booking ? 'neutral' : 'amber'}`}
-        >
-          {mine
-            ? 'Your appointment'
-            : slot.booking
-              ? 'Reserved'
-              : past
-                ? 'Past slot'
-                : 'Available'}
-        </span>
-        <h3>{slot.title}</h3>
-        <p>
-          {dateTime(slot.startsAt)} –{' '}
-          {new Date(slot.endsAt).toLocaleTimeString(undefined, {
-            hour: 'numeric',
-            minute: '2-digit',
-          })}
-        </p>
-        <p className="muted">{slot.location}</p>
-        {slot.organizerId === user.id && slot.booking && (
-          <small>Booked by {slot.booking.name}</small>
-        )}
-      </div>
-      <button
-        className={`button ${mine ? 'secondary' : 'primary'}`}
-        disabled={busy || (!mine && (Boolean(slot.booking) || past))}
-        onClick={() =>
-          act(
-            `/slots/${slot.id}/booking`,
-            mine ? 'DELETE' : 'POST',
-            mine ? 'Appointment cancelled.' : 'Appointment reserved.',
-          )
-        }
-      >
-        {mine
-          ? 'Cancel booking'
-          : slot.booking
-            ? 'Reserved'
-            : past
-              ? 'Closed'
-              : 'Reserve slot'}
-      </button>
+      <Groups event={event} user={user} onChanged={onChanged} />
     </article>
   );
 }
@@ -788,6 +789,7 @@ export default function App() {
       act={act}
       edit={() => setModal({ kind: 'event', event })}
       attendees={() => void showAttendees(event)}
+      onChanged={() => void reload()}
     />
   );
   return (
@@ -1085,7 +1087,9 @@ export default function App() {
                             {
                               slots.filter(
                                 (s) =>
-                                  !s.booking &&
+                                  !s.blocked &&
+                                  (s.bookedCount ?? (s.booking ? 1 : 0)) <
+                                    (s.capacity ?? 1) &&
                                   Date.parse(s.startsAt) > Date.now(),
                               ).length
                             }
@@ -1213,15 +1217,26 @@ export default function App() {
                   <div className="info-strip">
                     <ShieldCheck size={20} />
                     <p>
-                      Each slot accepts one booking. Reservations are checked
-                      and saved by the backend to prevent double booking.
+                      Choose an available appointment, add an optional meeting
+                      reason, and reserve your place. Your bookings are marked
+                      below. Conflicting appointments are rejected before
+                      saving.
                     </p>
                   </div>
+                  {user.role === 'organizer' && (
+                    <OfficeHoursBuilder
+                      onSaved={() => {
+                        setNotice('Office hours saved.');
+                        void reload();
+                      }}
+                    />
+                  )}
                   <div className="slot-list">
                     {slots.map((slot) => (
                       <SlotCard
                         key={slot.id}
                         slot={slot}
+                        slots={slots}
                         user={user}
                         busy={busy}
                         act={act}
@@ -1376,7 +1391,28 @@ export default function App() {
                           {r.status}
                         </span>
                       </td>
-                      <td>{r.sequence}</td>
+                      <td>
+                        {r.sequence}
+                        <button
+                          className="text-button"
+                          disabled={busy}
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `Remove ${r.name} from this event?`,
+                              )
+                            )
+                              void act(
+                                `/events/${attendees.event.id}/attendees/${r.userId}`,
+                                'DELETE',
+                                'Participant removed.',
+                                { confirm: true },
+                              ).then(() => showAttendees(attendees.event));
+                          }}
+                        >
+                          Remove attendee
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

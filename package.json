@@ -24,7 +24,10 @@
     "infra:validate": "node scripts/validate-infrastructure.mjs",
     "check": "npm run lint && npm run typecheck && npm test && npm run build && npm run infra:validate",
     "user:create": "tsx scripts/create-user.ts",
-    "demo:seed": "tsx scripts/seed.ts"
+    "demo:seed": "tsx scripts/seed.ts",
+    "test:load": "npm run build && node dist/backend/scripts/load-test.js",
+    "test:load:dynamodb": "npm run build && node dist/backend/scripts/load-test.js --dynamodb",
+    "data:migrate": "tsx scripts/migrate-database.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.900.0",

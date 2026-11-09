@@ -1,9 +1,37 @@
+import { freemem, totalmem } from 'node:os';
 import { createApp } from './app.js';
 import { allowedOrigins, readConfig } from './config.js';
 import { createStore } from './store.js';
 const config = readConfig();
 const store = createStore(config);
-await store.ready();
+try {
+  await store.ready();
+} catch (error) {
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      message: 'Database startup readiness failed',
+      category: 'DatabaseFailure',
+      type: error instanceof Error ? error.name : 'unknown',
+    }),
+  );
+  store.close();
+  process.exit(1);
+}
+// CloudWatch Logs metric filters consume these bounded, non-identifying samples.
+setInterval(
+  () =>
+    console.log(
+      JSON.stringify({
+        level: 'info',
+        category: 'RuntimeMetrics',
+        memoryUsedPercent: Math.round(100 * (1 - freemem() / totalmem())),
+        processMemoryMiB: Math.round(process.memoryUsage().rss / 1048576),
+        uptimeSeconds: Math.round(process.uptime()),
+      }),
+    ),
+  60000,
+).unref();
 const server = createApp(config, store).listen(config.PORT, config.HOST, () =>
   console.log(
     JSON.stringify({

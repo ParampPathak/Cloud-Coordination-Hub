@@ -16,6 +16,8 @@
     "../scripts/*.ts",
     "../tests/backend.test.ts",
     "../tests/polls.test.ts",
-    "../tests/dynamodb.test.ts"
+    "../tests/dynamodb.test.ts",
+    "../tests/coordination.test.ts",
+    "../tests/migration.test.ts"
   ]
 }

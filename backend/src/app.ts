@@ -1,3 +1,8 @@
+import {
+  SchedulingService,
+  generateSchedule,
+  scheduleSchema,
+} from './scheduling.js';
 import { pollSchema } from './polls.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -31,6 +36,20 @@ const eventSchema = z
     location: z.string().trim().min(1).max(300),
     startsAt: future,
     capacity: z.number().int().min(1).max(250),
+    groupConfiguration: z
+      .object({
+        count: z.number().int().min(1).max(50),
+        capacity: z.number().int().min(1).max(50),
+        names: z.array(z.string().trim().min(1).max(80)).max(50).optional(),
+        autoAssign: z.boolean().default(true),
+        allowSelfSelection: z.boolean().default(true),
+      })
+      .strict()
+      .refine(
+        (g) => !g.names || g.names.length === g.count,
+        'Provide one name per group.',
+      )
+      .optional(),
   })
   .strict();
 const slotSchema = z
@@ -57,6 +76,7 @@ const credentials = z
 export function createApp(config: Config, store: Store, logging = true) {
   const app = express();
   const service = new HubService(store);
+  const scheduling = new SchedulingService(store);
   const origins = allowedOrigins(config);
   app.disable('x-powered-by');
   // Single-instance SQLite is behind a local Nginx proxy. Retain the ALB mode.
@@ -92,7 +112,13 @@ export function createApp(config: Config, store: Store, logging = true) {
             level: res.statusCode >= 500 ? 'error' : 'info',
             requestId: id,
             method: req.method,
-            path: req.path,
+            route: req.route?.path ?? 'unmatched',
+            category:
+              res.locals.failureCategory ??
+              (res.statusCode === 409 &&
+              String(req.route?.path).includes('/slots/')
+                ? 'BookingConflict'
+                : 'Request'),
             status: res.statusCode,
             durationMs: Math.round(performance.now() - started),
           }),
@@ -111,15 +137,6 @@ export function createApp(config: Config, store: Store, logging = true) {
       res.status(503).json({ error: 'Database unavailable.' });
     }
   });
-  app.use(
-    '/api',
-    rateLimit({
-      windowMs: 60_000,
-      limit: 240,
-      standardHeaders: 'draft-8',
-      legacyHeaders: false,
-    }),
-  );
   app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
     if (
@@ -134,7 +151,7 @@ export function createApp(config: Config, store: Store, logging = true) {
     '/api/auth',
     rateLimit({
       windowMs: 15 * 60_000,
-      limit: 80,
+      limit: 160,
       skip: (req) => req.method === 'GET',
       standardHeaders: 'draft-8',
       legacyHeaders: false,
@@ -187,6 +204,16 @@ export function createApp(config: Config, store: Store, logging = true) {
     res.locals.user = user;
     next();
   });
+  app.use(
+    '/api',
+    rateLimit({
+      windowMs: 60_000,
+      limit: 240,
+      keyGenerator: (_req, res) => (res.locals.user as User).id,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+    }),
+  );
   const user = (res: express.Response) => res.locals.user as User;
   const id = (req: express.Request) => z.uuid().parse(req.params.id);
   app.get('/api/auth/me', (_req, res) => res.json(user(res)));
@@ -200,7 +227,11 @@ export function createApp(config: Config, store: Store, logging = true) {
   );
   app.put('/api/events/:id', async (req, res) =>
     res.json(
-      await service.editEvent(user(res), id(req), eventSchema.parse(req.body)),
+      await service.editEvent(
+        user(res),
+        id(req),
+        eventSchema.omit({ groupConfiguration: true }).parse(req.body),
+      ),
     ),
   );
   app.post('/api/events/:id/registrations', async (req, res) =>
@@ -228,6 +259,53 @@ export function createApp(config: Config, store: Store, logging = true) {
             .map((r) => `${cell(r.name)},${cell(r.status)},${r.sequence}`)
             .join('\r\n'),
       );
+  });
+  app.get('/api/events/:id/groups', async (req, res) =>
+    res.json(await service.groups(user(res), id(req))),
+  );
+  app.put('/api/events/:id/groups/membership', async (req, res) => {
+    const input = z
+      .object({
+        groupId: z.uuid().nullable(),
+        participantId: z.string().min(1).max(100).optional(),
+      })
+      .strict()
+      .parse(req.body);
+    res.json(
+      await service.assignGroup(
+        user(res),
+        id(req),
+        input.groupId,
+        input.participantId,
+      ),
+    );
+  });
+  app.delete('/api/events/:id/attendees/:participantId', async (req, res) => {
+    z.object({ confirm: z.literal(true) })
+      .strict()
+      .parse(req.body);
+    res.json(
+      await service.removeAttendee(
+        user(res),
+        id(req),
+        z.string().min(1).max(100).parse(req.params.participantId),
+      ),
+    );
+  });
+  app.get('/api/events/:id/groups.csv', async (req, res) => {
+    // attendees() performs the ownership check before a membership export.
+    await service.attendees(user(res), id(req));
+    const groups = await service.groups(user(res), id(req));
+    const cell = (value: string) =>
+      `"${(/^[=+@\-\t\r\n]/.test(value) ? "'" + value : value).replaceAll('"', '""')}"`;
+    const rows = [
+      ['Group', 'Student'],
+      ...groups.flatMap((g) => g.members.map((m) => [g.name, m.name])),
+    ];
+    res
+      .type('text/csv')
+      .attachment('groups.csv')
+      .send(rows.map((r) => r.map(cell).join(',')).join('\r\n'));
   });
   app.post('/api/polls', async (req, res) =>
     res
@@ -302,11 +380,63 @@ export function createApp(config: Config, store: Store, logging = true) {
       .json(await service.createSlot(user(res), slotSchema.parse(req.body))),
   );
   app.post('/api/slots/:id/booking', async (req, res) =>
-    res.json(await service.bookSlot(user(res), id(req))),
+    res.json(
+      await service.bookSlot(
+        user(res),
+        id(req),
+        z
+          .object({ reason: z.string().trim().max(1000).optional() })
+          .strict()
+          .parse(req.body ?? {}).reason,
+      ),
+    ),
   );
   app.delete('/api/slots/:id/booking', async (req, res) =>
     res.json(await service.cancelSlot(user(res), id(req))),
   );
+  app.post('/api/schedules/preview', async (req, res) => {
+    if (user(res).role !== 'organizer')
+      throw new HttpError(403, 'Organizer access is required.');
+    res.json(generateSchedule(scheduleSchema.parse(req.body)));
+  });
+  app.post('/api/schedules', async (req, res) =>
+    res
+      .status(201)
+      .json(
+        await scheduling.createSchedule(
+          user(res),
+          scheduleSchema.parse(req.body),
+        ),
+      ),
+  );
+  app.put('/api/slots/:id/block', async (req, res) => {
+    const input = z.object({ blocked: z.boolean() }).strict().parse(req.body);
+    res.json(await scheduling.block(user(res), id(req), input.blocked));
+  });
+  app.post('/api/slots/:id/reschedule', async (req, res) => {
+    const input = z
+      .object({
+        slotId: z.uuid(),
+        reason: z.string().trim().max(1000).default(''),
+      })
+      .strict()
+      .parse(req.body);
+    res.json(
+      await scheduling.book(user(res), input.slotId, input.reason, id(req)),
+    );
+  });
+  app.delete('/api/slots/:id/bookings/:participantId', async (req, res) => {
+    z.object({ confirm: z.literal(true) })
+      .strict()
+      .parse(req.body);
+    res.json(
+      await scheduling.cancel(
+        user(res),
+        id(req),
+        z.string().min(1).max(100).parse(req.params.participantId),
+      ),
+    );
+  });
   app.use('/api', (_req, _res, next) =>
     next(new HttpError(404, 'API endpoint was not found.')),
   );
@@ -338,12 +468,19 @@ export function createApp(config: Config, store: Store, logging = true) {
         return res.status(400).json({ error: 'Invalid JSON body.' });
       if ((error as { type?: string })?.type === 'entity.too.large')
         return res.status(413).json({ error: 'Request body is too large.' });
+      res.locals.failureCategory =
+        /Dynamo|Transaction|Sqlite|SQLite|Database|ProvisionedThroughput/.test(
+          error instanceof Error ? error.name : '',
+        )
+          ? 'DatabaseFailure'
+          : 'ApplicationFailure';
       if (logging)
         console.error(
           JSON.stringify({
             level: 'error',
             requestId: res.getHeader('X-Request-Id'),
             message: 'Unhandled request failure',
+            category: res.locals.failureCategory,
             type: error instanceof Error ? error.name : 'unknown',
           }),
         );

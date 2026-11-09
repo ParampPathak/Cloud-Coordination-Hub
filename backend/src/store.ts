@@ -20,6 +20,7 @@ export interface RecordVersion<T> {
 }
 export interface Store {
   kind: string;
+  transact(writes: StoreWrite[], activity?: Activity): Promise<boolean>;
   get<T>(kind: string, id: string): Promise<RecordVersion<T> | null>;
   list<T>(kind: string): Promise<T[]>;
   put<T>(
@@ -32,6 +33,22 @@ export interface Store {
   remove(kind: string, id: string): Promise<void>;
   ready(): Promise<void>;
   close(): void;
+}
+export interface StoreWrite {
+  kind: string;
+  id: string;
+  data: unknown;
+  expected: number | null;
+}
+function validateWrites(writes: StoreWrite[], activity?: Activity) {
+  if (!writes.length || writes.length + (activity ? 1 : 0) > 100)
+    throw new Error('Transaction must contain 1–100 items.');
+  const keys = writes.map((w) => JSON.stringify([w.kind, w.id]));
+  if (new Set(keys).size !== keys.length)
+    throw new Error('Duplicate transaction key.');
+  let size = 0;
+  for (const w of writes) size += Buffer.byteLength(serialize(w.data)) + 1024;
+  if (size > 3_900_000) throw new Error('Transaction size limit reached.');
 }
 export class SqliteStore implements Store {
   kind = 'Local SQLite';
@@ -98,24 +115,30 @@ export class SqliteStore implements Store {
     expected: number | null,
     activity?: Activity,
   ) {
-    const json = serialize(data);
+    return this.transact([{ kind, id, data, expected }], activity);
+  }
+  async transact(writes: StoreWrite[], activity?: Activity) {
+    validateWrites(writes, activity);
     this.db.exec('BEGIN IMMEDIATE');
     try {
-      const result =
-        expected === null
-          ? this.db
-              .prepare(
-                'INSERT OR IGNORE INTO records(kind,id,data,version) VALUES (?,?,?,1)',
-              )
-              .run(kind, id, json)
-          : this.db
-              .prepare(
-                'UPDATE records SET data=?,version=version+1 WHERE kind=? AND id=? AND version=?',
-              )
-              .run(json, kind, id, expected);
-      if (Number(result.changes) === 0) {
-        this.db.exec('ROLLBACK');
-        return false;
+      for (const { kind, id, data, expected } of writes) {
+        const json = serialize(data);
+        const result =
+          expected === null
+            ? this.db
+                .prepare(
+                  'INSERT OR IGNORE INTO records(kind,id,data,version) VALUES (?,?,?,1)',
+                )
+                .run(kind, id, json)
+            : this.db
+                .prepare(
+                  'UPDATE records SET data=?,version=version+1 WHERE kind=? AND id=? AND version=?',
+                )
+                .run(json, kind, id, expected);
+        if (Number(result.changes) === 0) {
+          this.db.exec('ROLLBACK');
+          return false;
+        }
       }
       if (activity)
         this.db
@@ -203,12 +226,15 @@ export class DynamoStore implements Store {
     expected: number | null,
     activity?: Activity,
   ) {
-    serialize(data);
+    return this.transact([{ kind, id, data, expected }], activity);
+  }
+  async transact(writes: StoreWrite[], activity?: Activity) {
+    validateWrites(writes, activity);
     try {
       await this.client.send(
         new TransactWriteCommand({
           TransactItems: [
-            {
+            ...writes.map(({ kind, id, data, expected }) => ({
               Put: {
                 TableName: this.config.DYNAMODB_TABLE,
                 Item: {
@@ -229,7 +255,7 @@ export class DynamoStore implements Store {
                       ExpressionAttributeValues: { ':v': expected },
                     }),
               },
-            },
+            })),
             ...(activity
               ? [
                   {
@@ -256,12 +282,18 @@ export class DynamoStore implements Store {
         CancellationReasons?: { Code: string }[];
       };
       if (
-        e.name === 'TransactionCanceledException' &&
-        e.CancellationReasons?.some((reason) =>
-          ['ConditionalCheckFailed', 'TransactionConflict'].includes(
-            reason.Code,
-          ),
-        )
+        e.name === 'TransactionConflictException' ||
+        (e.name === 'TransactionCanceledException' &&
+          e.CancellationReasons?.some((reason) =>
+            ['ConditionalCheckFailed', 'TransactionConflict'].includes(
+              reason.Code,
+            ),
+          ) &&
+          e.CancellationReasons.every((reason) =>
+            ['None', 'ConditionalCheckFailed', 'TransactionConflict'].includes(
+              reason.Code,
+            ),
+          ))
       )
         return false;
       throw error;

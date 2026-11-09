@@ -1999,3 +1999,66 @@ select {
     padding-right: 14px;
   }
 }
+
+/* Office hours and grouped events reuse the existing panel and form styles. */
+.scheduling-builder {
+  margin-bottom: 20px;
+}
+.schedule-preview {
+  max-height: 360px;
+  overflow: auto;
+  margin-top: 20px;
+}
+.appointment-card {
+  display: grid;
+  gap: 12px;
+}
+.appointment-card p,
+.appointment-card h3 {
+  margin: 0;
+}
+.appointment-card textarea,
+.appointment-card select,
+.group-section select {
+  width: 100%;
+}
+.booking-list {
+  padding-left: 20px;
+}
+.group-section {
+  border-top: 1px solid var(--border, #e0e6e1);
+  margin-top: 18px;
+  padding-top: 14px;
+}
+.group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+.group-card {
+  border: 1px solid #e0e6e1;
+  border-radius: 12px;
+  padding: 12px;
+  overflow-wrap: anywhere;
+}
+.group-card h4 {
+  margin: 0 0 8px;
+}
+.group-card button {
+  margin-top: 8px;
+  width: 100%;
+}
+.group-section label {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.check-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.check-label input {
+  width: auto;
+}

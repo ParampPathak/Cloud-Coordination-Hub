@@ -1,3 +1,4 @@
+import { SchedulingService, slotView } from './scheduling.js';
 import {
   activeEntries,
   canManagePoll,
@@ -5,7 +6,12 @@ import {
   normalizePoll,
   settings,
 } from './polls.js';
-import type { PollInput, PollSettings } from '../../shared/types.js';
+import type {
+  GroupConfiguration,
+  GroupView,
+  PollInput,
+  PollSettings,
+} from '../../shared/types.js';
 import { randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import type { Store } from './store.js';
@@ -84,11 +90,38 @@ export class HubService {
     input: Pick<
       HubEvent,
       'title' | 'description' | 'location' | 'startsAt' | 'capacity'
-    >,
+    > & { groupConfiguration?: GroupConfiguration },
   ) {
     organizer(user);
+    const { groupConfiguration, ...fields } = input;
+    if (
+      groupConfiguration &&
+      (groupConfiguration.count * groupConfiguration.capacity !==
+        input.capacity ||
+        input.capacity > 250)
+    )
+      throw new HttpError(
+        400,
+        'Event capacity must equal group count × group capacity (maximum 250).',
+      );
     const event: HubEvent = {
-      ...input,
+      ...fields,
+      ...(groupConfiguration
+        ? {
+            groups: Array.from(
+              { length: groupConfiguration.count },
+              (_, i) => ({
+                id: randomUUID(),
+                name: groupConfiguration.names?.[i] ?? `Group ${i + 1}`,
+                capacity: groupConfiguration.capacity,
+              }),
+            ),
+            groupSettings: {
+              autoAssign: groupConfiguration.autoAssign,
+              allowSelfSelection: groupConfiguration.allowSelfSelection,
+            },
+          }
+        : {}),
       id: randomUUID(),
       organizerId: user.id,
       createdAt: now(),
@@ -120,6 +153,11 @@ export class HubService {
         'Updated event',
         (event) => {
           owner(user, event);
+          if (event.groups && input.capacity !== event.capacity)
+            throw new HttpError(
+              409,
+              'Grouped event capacity is fixed to its configured groups.',
+            );
           if (
             input.capacity <
             event.registrations.filter((r) => r.status === 'confirmed').length
@@ -145,8 +183,18 @@ export class HubService {
     for (const entry of waiting) {
       if (confirmed >= event.capacity) break;
       entry.status = 'confirmed';
+      if (event.groupSettings?.autoAssign)
+        entry.groupId = this.availableGroup(event)?.id;
       confirmed++;
     }
+  }
+  private availableGroup(event: HubEvent) {
+    return event.groups?.find(
+      (g) =>
+        event.registrations.filter(
+          (r) => r.status === 'confirmed' && r.groupId === g.id,
+        ).length < g.capacity,
+    );
   }
   async register(user: User, id: string) {
     return this.eventView(
@@ -177,6 +225,9 @@ export class HubService {
             status: confirmed < event.capacity ? 'confirmed' : 'waitlisted',
             sequence: event.nextSequence++,
             createdAt: now(),
+            ...(confirmed < event.capacity && event.groupSettings?.autoAssign
+              ? { groupId: this.availableGroup(event)?.id }
+              : {}),
           });
         },
       ),
@@ -565,43 +616,108 @@ export class HubService {
     user: User,
     input: Pick<Slot, 'title' | 'location' | 'startsAt' | 'endsAt'>,
   ) {
-    organizer(user);
-    const slot: Slot = {
-      ...input,
-      id: randomUUID(),
-      organizerId: user.id,
-      createdAt: now(),
-      booking: null,
-    };
-    await this.store.put(
-      'slot',
-      slot.id,
-      slot,
-      null,
-      this.activity(user, slot.id, `Opened appointment: ${slot.title}`),
-    );
-    return slot;
+    return new SchedulingService(this.store).createSlot(user, input);
   }
-  async bookSlot(user: User, id: string) {
-    return this.mutate<Slot>('slot', id, user, 'Booked appointment', (slot) => {
-      if (Date.parse(slot.startsAt) <= Date.now())
-        throw new HttpError(409, 'This appointment is in the past.');
-      if (slot.booking)
-        throw new HttpError(409, 'This appointment is already booked.');
-      slot.booking = { userId: user.id, name: user.name };
-    });
+  async bookSlot(user: User, id: string, reason = '') {
+    return new SchedulingService(this.store).book(user, id, reason);
   }
   async cancelSlot(user: User, id: string) {
-    return this.mutate<Slot>(
-      'slot',
+    return new SchedulingService(this.store).cancel(user, id);
+  }
+  async groups(user: User, id: string): Promise<GroupView[]> {
+    const record = await this.store.get<HubEvent>('event', id);
+    if (!record) throw new HttpError(404, 'Event was not found.');
+    const event = record.data;
+    const authorized =
+      event.organizerId === user.id ||
+      event.registrations.some(
+        (r) => r.userId === user.id && r.status === 'confirmed',
+      );
+    if (!authorized)
+      throw new HttpError(
+        403,
+        'Register for this event to view its group membership.',
+      );
+    return (event.groups ?? []).map((g) => ({
+      ...g,
+      members: event.registrations
+        .filter((r) => r.groupId === g.id && r.status === 'confirmed')
+        .map((r) => ({ userId: r.userId, name: r.name })),
+    }));
+  }
+  async assignGroup(
+    user: User,
+    id: string,
+    groupId: string | null,
+    participantId = user.id,
+  ) {
+    const event = await this.mutate<HubEvent>(
+      'event',
       id,
       user,
-      'Cancelled appointment',
-      (slot) => {
-        if (slot.booking?.userId !== user.id)
-          throw new HttpError(403, 'You can only cancel your own booking.');
-        slot.booking = null;
+      'Updated group membership',
+      (event) => {
+        const manages =
+          event.organizerId === user.id && user.role === 'organizer';
+        if (
+          !manages &&
+          (participantId !== user.id ||
+            !event.groupSettings?.allowSelfSelection)
+        )
+          throw new HttpError(
+            403,
+            'Only the organizer can assign this participant.',
+          );
+        if (Date.parse(event.startsAt) <= Date.now())
+          throw new HttpError(409, 'Group changes have closed for this event.');
+        const registration = event.registrations.find(
+          (r) => r.userId === participantId && r.status === 'confirmed',
+        );
+        if (!registration)
+          throw new HttpError(
+            409,
+            'A confirmed event registration is required.',
+          );
+        if (groupId === null) {
+          delete registration.groupId;
+          return;
+        }
+        const group = event.groups?.find((g) => g.id === groupId);
+        if (!group) throw new HttpError(404, 'Group was not found.');
+        if (registration.groupId === groupId)
+          throw new HttpError(409, 'Already a member of this group.');
+        if (
+          event.registrations.filter(
+            (r) => r.status === 'confirmed' && r.groupId === groupId,
+          ).length >= group.capacity
+        )
+          throw new HttpError(
+            409,
+            'This group is full. Your existing assignment was preserved.',
+          );
+        registration.groupId = groupId;
       },
+    );
+    return this.eventView(event, user);
+  }
+  async removeAttendee(user: User, id: string, participantId: string) {
+    return this.eventView(
+      await this.mutate<HubEvent>(
+        'event',
+        id,
+        user,
+        'Removed event participant',
+        (event) => {
+          owner(user, event);
+          if (!event.registrations.some((r) => r.userId === participantId))
+            throw new HttpError(404, 'Registration was not found.');
+          event.registrations = event.registrations.filter(
+            (r) => r.userId !== participantId,
+          );
+          this.promote(event);
+        },
+      ),
+      user,
     );
   }
   async snapshot(user: User): Promise<Snapshot> {
@@ -635,15 +751,7 @@ export class HubService {
         .map((poll) => this.pollView(poll, user)),
       slots: slots
         .sort((a, b) => a.startsAt.localeCompare(b.startsAt))
-        .map((slot) => ({
-          ...slot,
-          booking:
-            slot.booking &&
-            slot.booking.userId !== user.id &&
-            slot.organizerId !== user.id
-              ? { userId: '', name: 'Reserved' }
-              : slot.booking,
-        })),
+        .map((slot) => slotView(slot, user)),
       activities: activities
         .filter((a) => a.actorId === user.id || owned.has(a.resourceId))
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))

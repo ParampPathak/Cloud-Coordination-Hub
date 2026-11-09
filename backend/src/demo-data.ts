@@ -1,5 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { createUser } from './auth.js';
+import { SchedulingService } from './scheduling.js';
+import { randomUUID } from 'node:crypto';
 import { HubService } from './service.js';
 import type { Store } from './store.js';
 
@@ -47,6 +49,36 @@ export async function createDemoData(store: Store) {
     location: 'Innovation Lab',
     startsAt: future(4, 10),
     capacity: 12,
+  });
+  await service.createEvent(organizer, {
+    title: 'Cloud project groups',
+    description: 'Choose your team for the class demonstration.',
+    location: 'Classroom',
+    startsAt: future(3, 14),
+    capacity: 36,
+    groupConfiguration: {
+      count: 9,
+      capacity: 4,
+      autoAssign: true,
+      allowSelfSelection: true,
+    },
+  });
+  await new SchedulingService(store).createSchedule(organizer, {
+    title: 'Professor office hours',
+    location: 'Room 108',
+    date: future(2, 12).slice(0, 10),
+    startTime: '14:00',
+    endTime: '16:00',
+    timeZone: 'America/Chicago',
+    durationMinutes: 15,
+    bufferMinutes: 0,
+    capacity: 1,
+    weeks: 1,
+    breaks: [],
+    bookingLeadMinutes: 0,
+    cancelBeforeMinutes: 0,
+    maxActiveBookings: 20,
+    requestId: randomUUID(),
   });
   await service.register(attendee, event.id);
   const poll = await service.createPoll(organizer, {

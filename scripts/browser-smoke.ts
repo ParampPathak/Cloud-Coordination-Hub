@@ -1,4 +1,4 @@
-﻿import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser } from 'playwright-core';
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -383,6 +383,134 @@ try {
   await first.getByRole('button', { name: 'Reserve slot' }).waitFor();
   console.log(
     'PASS: appointment creation, booking, reserved state and cancellation through the browser.',
+  );
+  // Generated office hours and booking reasons through the actual professor/student UI.
+  await orgPage
+    .getByRole('button', { name: 'Create office-hour schedule' })
+    .click();
+  await orgPage
+    .getByLabel('Schedule title')
+    .fill('Final evaluation office hours');
+  await orgPage.getByLabel('Office-hour location').fill('Professor room');
+  await orgPage
+    .getByLabel('Office-hour date')
+    .fill(new Date(start.getTime() + 86400_000).toISOString().slice(0, 10));
+  await orgPage
+    .getByLabel('Time zone', { exact: true })
+    .fill('America/Chicago');
+  await orgPage.getByRole('button', { name: 'Preview appointments' }).click();
+  await orgPage
+    .getByRole('heading', { name: '8 appointments · America/Chicago' })
+    .waitFor();
+  await orgPage.getByRole('button', { name: 'Save office hours' }).click();
+  const officeCard = (page: typeof first) =>
+    page
+      .locator('article')
+      .filter({
+        has: page.getByRole('heading', {
+          name: 'Final evaluation office hours',
+          exact: true,
+        }),
+      })
+      .first();
+  await officeCard(orgPage).waitFor();
+  await first.getByRole('button', { name: 'Refresh workspace' }).click();
+  await officeCard(first)
+    .getByLabel('Reason for meeting (optional)')
+    .fill('Review the architecture');
+  await officeCard(first).getByRole('button', { name: 'Reserve slot' }).click();
+  await officeCard(first)
+    .getByText('Your appointment', { exact: true })
+    .waitFor();
+  await orgPage.getByRole('button', { name: 'Refresh workspace' }).click();
+  await officeCard(orgPage)
+    .getByText('Review the architecture', { exact: true })
+    .waitFor();
+  await first.getByRole('button', { name: 'Cancel booking' }).click();
+  await officeCard(first)
+    .getByRole('button', { name: 'Reserve slot' })
+    .waitFor();
+  await first.setViewportSize({ width: 390, height: 844 });
+  assert(
+    await first.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    'Scheduling overflowed on mobile',
+  );
+  await first.screenshot({
+    path: 'artifacts/poll-ui/office-hours-mobile.png',
+    fullPage: true,
+  });
+  await first.setViewportSize({ width: 1440, height: 1100 });
+  console.log(
+    'PASS: eight-slot office-hour preview/create, private meeting reason, student booking/cancellation, and mobile schedule layout.',
+  );
+  await orgPage.getByRole('link', { name: /^Events/ }).click();
+  await orgPage
+    .getByRole('button', { name: 'Create event', exact: true })
+    .click();
+  await orgPage.getByLabel('Event title').fill('Final evaluation groups');
+  await orgPage.getByLabel('Location or meeting link').fill('Classroom');
+  await orgPage.getByLabel('Date and time').fill(local);
+  await orgPage.getByText('Groups (optional)', { exact: true }).click();
+  await orgPage.getByLabel('Divide this event into groups').check();
+  await orgPage
+    .getByRole('button', { name: 'Create event', exact: true })
+    .last()
+    .click();
+  const groupCard = (page: typeof first) =>
+    page.locator('article').filter({
+      has: page.getByRole('heading', {
+        name: 'Final evaluation groups',
+        exact: true,
+      }),
+    });
+  await groupCard(orgPage).waitFor();
+  await first.getByRole('link', { name: /^Events/ }).click();
+  await first.getByRole('button', { name: 'Refresh workspace' }).click();
+  await groupCard(first)
+    .getByRole('button', { name: 'Register', exact: true })
+    .click();
+  await groupCard(first)
+    .getByRole('button', { name: 'View groups', exact: true })
+    .click();
+  await groupCard(first)
+    .getByText('Jordan Lee (you)', { exact: true })
+    .waitFor();
+  await groupCard(first)
+    .getByRole('button', { name: 'Join Group 2', exact: true })
+    .click();
+  await groupCard(first)
+    .getByText('Your group: Group 2', { exact: false })
+    .waitFor();
+  await groupCard(orgPage)
+    .getByRole('button', { name: 'View groups', exact: true })
+    .click();
+  await groupCard(orgPage)
+    .getByRole('combobox', { name: 'Group for Jordan Lee', exact: true })
+    .selectOption({ label: 'Group 3 (0/4)' });
+  await groupCard(orgPage)
+    .getByRole('heading', { name: 'Group 3 — 1/4 students' })
+    .waitFor();
+  const groupDownload = orgPage.waitForEvent('download');
+  await groupCard(orgPage)
+    .getByRole('link', { name: 'Export group CSV' })
+    .click();
+  assert.equal((await groupDownload).suggestedFilename(), 'groups.csv');
+  await first.setViewportSize({ width: 390, height: 844 });
+  assert(
+    await first.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    'Grouped event overflowed on mobile',
+  );
+  await first.screenshot({
+    path: 'artifacts/poll-ui/groups-mobile.png',
+    fullPage: true,
+  });
+  await first.setViewportSize({ width: 1440, height: 1100 });
+  console.log(
+    'PASS: nine groups of four, automatic assignment, student switch, organizer transfer, CSV download and mobile groups.',
   );
   await orgPage.getByRole('link', { name: /^Events/ }).click();
   await orgPage.getByRole('button', { name: 'Refresh workspace' }).click();

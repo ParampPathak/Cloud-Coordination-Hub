@@ -9,7 +9,13 @@ const initialized = spawnSync(
 if (initialized.status !== 0) process.exit(1);
 const result = spawnSync(
   process.execPath,
-  ['node_modules/vitest/vitest.mjs', 'run', 'tests/dynamodb.test.ts'],
+  [
+    'node_modules/vitest/vitest.mjs',
+    'run',
+    'tests/dynamodb.test.ts',
+    'tests/coordination.test.ts',
+    'tests/migration.test.ts',
+  ],
   { stdio: 'inherit', env: { ...process.env, RUN_DYNAMODB_TESTS: 'true' } },
 );
 process.exit(result.status ?? 1);
