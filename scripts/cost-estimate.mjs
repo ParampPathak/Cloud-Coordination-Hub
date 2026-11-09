@@ -1,6 +1,6 @@
 // Illustrative unit prices, not an AWS quote. Check current region/account rates before approval.
 const hours = Number(process.argv[2] ?? 20);
-const instances = Number(process.argv[3] ?? 1);
+const instances = Number(process.argv[3] ?? 2);
 if (
   !Number.isFinite(hours) ||
   hours <= 0 ||

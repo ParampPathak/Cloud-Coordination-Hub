@@ -1,6 +1,6 @@
 # Cloud Coordination Hub Implementation Plan
 
-Status: Stage 1 approved and implemented. Stages 2-4 remain pending; Stage 2 requires user approval.
+Status: the November 2026 final-project request supersedes the original stage approval boundary. Stage 1 remains implemented; the requested office-hour and group scope is implemented and locally verified. See docs/final-verification.md for exact coverage and remaining live AWS requirements. This original design includes broader later features that are not all implemented.
 
 This plan covers the complete supplied feature requirements in four stages. Extend the existing application; preserve users, sessions, events, votes, reservations, and working workflows. The original planning task changed only this plan. Stage 1 application changes are now implemented under separate user approval; later stages remain pending.
 
@@ -150,4 +150,4 @@ Update `README.md`, `docs/api.md`, `docs/database.md`, and `docs/security.md` as
 
 ## Approval boundary
 
-Stage 1 was explicitly approved by the user and implemented. Stop after Stage 1 verification and handoff. Wait for explicit user approval before starting Stage 2. Google account connection and cloud deployment remain outside the current authorization.
+The final-project user request authorizes office hours, groups, infrastructure code, testing and Git consolidation. The user subsequently selected local verification; live AWS resource changes/deployment remain deferred. Google integration was not requested for this implementation.

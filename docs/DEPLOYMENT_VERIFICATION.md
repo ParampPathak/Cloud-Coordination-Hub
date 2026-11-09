@@ -1,3 +1,5 @@
+> Historical single-instance prototype reference. The final scalable deployment uses [the two-AZ ALB/ASG/shared-DynamoDB runbook](FINAL_DEPLOYMENT.md). This document is not evidence of a live final deployment.
+
 # EC2 preparation verification
 
 Preparation performed locally on Windows with Node 24.19.0 and npm 11.17.0. Base repository commit: `25dcd0201ab5f75d6f7c34413e731ade30cc0a01`. No push, AWS login, AWS SDK connection, resource creation or deployment was performed. Existing authentication/API/development workflows and the DynamoDB architecture were preserved.

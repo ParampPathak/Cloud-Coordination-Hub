@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Cloud Coordination Hub - Academy compatible, existing IAM profile, offline application AMI. Prepared only; not deployed.
+Description: Cloud Coordination Hub - private two-AZ application, shared DynamoDB, HTTPS ALB, Auto Scaling and CloudWatch. Prepared only; not deployed.
 Parameters:
   EnvironmentName:
     Type: String
-    Default: cch-midpoint
+    Default: cch-final
     AllowedPattern: '[a-z][a-z0-9-]{2,24}'
   ApplicationAmi:
     Type: AWS::EC2::Image::Id
@@ -20,15 +20,15 @@ Parameters:
     Description: Confirm the selected type is approved in your Sandbox. This list does not guarantee account availability.
   MinCapacity:
     Type: Number
-    Default: 1
+    Default: 2
     AllowedValues: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   DesiredCapacity:
     Type: Number
-    Default: 1
+    Default: 2
     AllowedValues: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
   MaxCapacity:
     Type: Number
-    Default: 2
+    Default: 3
     AllowedValues: [1, 2, 3, 4, 5, 6, 7, 8, 9]
     Description: Account total including other instances and any image builder must remain at most 9.
   TableName:
@@ -57,7 +57,19 @@ Parameters:
     Default: 'false'
     AllowedValues: ['true', 'false']
     Description: Create a regional management-event trail only if no appropriate existing trail covers the account. Check cost and permissions first.
+  EnableManagementEndpoints:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Cost opt-in for SSM and ssmmessages interface endpoints in both AZs. Requires a recent SSM agent baked in the AMI and an approved existing profile.
+  AlarmTopicArn:
+    Type: String
+    Default: ''
+    AllowedPattern: '(^$|arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+)'
+    Description: Optional existing SNS topic for alarm notifications; alarms remain visible without a topic.
 Conditions:
+  ManagementEnabled: !Equals [!Ref EnableManagementEndpoints, 'true']
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, '']]
   LogsEnabled: !Equals [!Ref EnableLogsEndpoint, 'true']
   TrailEnabled: !Equals [!Ref EnableCloudTrail, 'true']
 Resources:
@@ -178,6 +190,41 @@ Resources:
           }
       SecurityGroupEgress:
         - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0 }
+  ManagementSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: ManagementEnabled
+    Properties:
+      GroupDescription: SSM private endpoints allow only application instances
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {
+            IpProtocol: tcp,
+            FromPort: 443,
+            ToPort: 443,
+            SourceSecurityGroupId: !Ref AppSecurityGroup,
+          }
+      SecurityGroupEgress:
+        - { IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 10.42.0.0/16 }
+  SsmEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ManagementEnabled
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateA, !Ref PrivateB]
+      SecurityGroupIds: [!Ref ManagementSecurityGroup]
+  SsmMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Condition: ManagementEnabled
+    Properties:
+      VpcId: !Ref Vpc
+      VpcEndpointType: Interface
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      PrivateDnsEnabled: true
+      SubnetIds: [!Ref PrivateA, !Ref PrivateB]
+      SecurityGroupIds: [!Ref ManagementSecurityGroup]
   DataTable:
     Type: AWS::DynamoDB::Table
     DeletionPolicy: Retain
@@ -271,6 +318,7 @@ Resources:
         InstanceType: !Ref InstanceType
         IamInstanceProfile: { Name: !Ref ExistingInstanceProfile }
         SecurityGroupIds: [!Ref AppSecurityGroup]
+        Monitoring: { Enabled: true }
         MetadataOptions:
           {
             HttpTokens: required,
@@ -313,7 +361,7 @@ Resources:
       [HttpsListener, DynamoEndpoint, PrivateAssociationA, PrivateAssociationB]
     UpdatePolicy:
       AutoScalingRollingUpdate:
-        { MinInstancesInService: 0, MaxBatchSize: 1, PauseTime: PT2M }
+        { MinInstancesInService: 1, MaxBatchSize: 1, PauseTime: PT3M }
     Properties:
       MinSize: !Ref MinCapacity
       DesiredCapacity: !Ref DesiredCapacity
@@ -327,6 +375,19 @@ Resources:
       TargetGroupARNs: [!Ref Targets]
       HealthCheckType: ELB
       HealthCheckGracePeriod: 180
+      DefaultInstanceWarmup: 180
+      MetricsCollection:
+        [
+          {
+            Granularity: 1Minute,
+            Metrics:
+              [
+                GroupInServiceInstances,
+                GroupDesiredCapacity,
+                GroupTotalInstances,
+              ],
+          },
+        ]
       Tags:
         [{ Key: Name, Value: !Ref EnvironmentName, PropagateAtLaunch: true }]
   RequestScaling:
@@ -346,6 +407,15 @@ Resources:
                 !GetAtt Targets.TargetGroupFullName,
               ],
             ]
+  CpuScaling:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref ApplicationGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        TargetValue: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
   ApplicationLogs:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -384,12 +454,172 @@ Resources:
             Principal: '*'
             Action: [logs:CreateLogStream, logs:PutLogEvents]
             Resource: !Sub '${ApplicationLogs.Arn}'
+  ApiFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogs
+      FilterPattern: '{ $.status >= 500 }'
+      MetricTransformations:
+        - {
+            MetricNamespace: !Sub 'CCH/${EnvironmentName}',
+            MetricName: ApiFailures,
+            MetricValue: '1',
+            DefaultValue: 0,
+          }
+  DatabaseFailureMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogs
+      FilterPattern: '{ $.category = "DatabaseFailure" }'
+      MetricTransformations:
+        - {
+            MetricNamespace: !Sub 'CCH/${EnvironmentName}',
+            MetricName: DatabaseFailures,
+            MetricValue: '1',
+            DefaultValue: 0,
+          }
+  BookingConflictMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogs
+      FilterPattern: '{ $.category = "BookingConflict" }'
+      MetricTransformations:
+        - {
+            MetricNamespace: !Sub 'CCH/${EnvironmentName}',
+            MetricName: BookingConflicts,
+            MetricValue: '1',
+            DefaultValue: 0,
+          }
+  MemoryMetric:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogs
+      FilterPattern: '{ $.category = "RuntimeMetrics" }'
+      MetricTransformations:
+        - {
+            MetricNamespace: !Sub 'CCH/${EnvironmentName}',
+            MetricName: HostMemoryUsedPercent,
+            MetricValue: '$.memoryUsedPercent',
+            Unit: Percent,
+          }
+  UnhealthyTargetAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: One or more unhealthy targets for two consecutive minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - {
+            Name: LoadBalancer,
+            Value: !GetAtt LoadBalancer.LoadBalancerFullName,
+          }
+        - { Name: TargetGroup, Value: !GetAtt Targets.TargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+  TargetErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Five or more target HTTP 5xx errors per minute for two minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        [
+          {
+            Name: LoadBalancer,
+            Value: !GetAtt LoadBalancer.LoadBalancerFullName,
+          },
+        ]
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+  CpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Average ASG CPU over 75 percent for five minutes; scaling target is 60 percent
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions: [{ Name: AutoScalingGroupName, Value: !Ref ApplicationGroup }]
+      Statistic: Average
+      Period: 60
+      EvaluationPeriods: 5
+      Threshold: 75
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+  LatencyAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Target p95 response time above one second for three minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: TargetResponseTime
+      Dimensions:
+        [
+          {
+            Name: LoadBalancer,
+            Value: !GetAtt LoadBalancer.LoadBalancerFullName,
+          },
+        ]
+      ExtendedStatistic: p95
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 1
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+  AvailabilityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Fewer than two healthy application targets for two minutes
+      Namespace: AWS/ApplicationELB
+      MetricName: HealthyHostCount
+      Dimensions:
+        - {
+            Name: LoadBalancer,
+            Value: !GetAtt LoadBalancer.LoadBalancerFullName,
+          }
+        - { Name: TargetGroup, Value: !GetAtt Targets.TargetGroupFullName }
+      Statistic: Minimum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 2
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions:
+        !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+  InstanceFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: EC2 status check failure in the ASG for two minutes
+      Namespace: AWS/EC2
+      MetricName: StatusCheckFailed
+      Dimensions: [{ Name: AutoScalingGroupName, Value: !Ref ApplicationGroup }]
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: missing
+      AlarmActions:
+        !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
   MonitoringDashboard:
     Type: AWS::CloudWatch::Dashboard
     Properties:
       DashboardName: !Sub '${EnvironmentName}-health'
       DashboardBody: !Sub |
-        {"widgets":[{"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"ALB request latency and errors","view":"timeSeries","metrics":[["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"Average"}],["AWS/ApplicationELB","HTTPCode_Target_5XX_Count","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"Sum"}]]}},{"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Application CPU","view":"timeSeries","metrics":[["AWS/EC2","CPUUtilization","AutoScalingGroupName","${ApplicationGroup}",{"stat":"Average"}]]}}]}
+        {"widgets":[{"type":"metric","x":0,"y":0,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Requests and HTTP errors","view":"timeSeries","period":60,"metrics":[["AWS/ApplicationELB","RequestCount","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"Sum"}],["AWS/ApplicationELB","HTTPCode_Target_4XX_Count","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"Sum"}],["AWS/ApplicationELB","HTTPCode_Target_5XX_Count","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"Sum"}],["AWS/ApplicationELB","HTTPCode_ELB_5XX_Count","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"Sum"}]]}},{"type":"metric","x":12,"y":0,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Target response latency","view":"timeSeries","period":60,"metrics":[["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"p50"}],["AWS/ApplicationELB","TargetResponseTime","LoadBalancer","${LoadBalancer.LoadBalancerFullName}",{"stat":"p95"}]]}},{"type":"metric","x":0,"y":6,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Healthy and unhealthy targets","view":"timeSeries","period":60,"metrics":[["AWS/ApplicationELB","HealthyHostCount","LoadBalancer","${LoadBalancer.LoadBalancerFullName}","TargetGroup","${Targets.TargetGroupFullName}",{"stat":"Minimum"}],["AWS/ApplicationELB","UnHealthyHostCount","LoadBalancer","${LoadBalancer.LoadBalancerFullName}","TargetGroup","${Targets.TargetGroupFullName}",{"stat":"Maximum"}]]}},{"type":"metric","x":12,"y":6,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"CPU and EC2 failures","view":"timeSeries","period":60,"metrics":[["AWS/EC2","CPUUtilization","AutoScalingGroupName","${ApplicationGroup}",{"stat":"Average"}],["AWS/EC2","StatusCheckFailed","AutoScalingGroupName","${ApplicationGroup}",{"stat":"Maximum"}]]}},{"type":"metric","x":0,"y":12,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Auto Scaling capacity","view":"timeSeries","period":60,"metrics":[["AWS/AutoScaling","GroupInServiceInstances","AutoScalingGroupName","${ApplicationGroup}",{"stat":"Average"}],["AWS/AutoScaling","GroupDesiredCapacity","AutoScalingGroupName","${ApplicationGroup}",{"stat":"Average"}],["AWS/AutoScaling","GroupTotalInstances","AutoScalingGroupName","${ApplicationGroup}",{"stat":"Average"}]]}},{"type":"metric","x":12,"y":12,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Application failures and booking contention (logs required)","view":"timeSeries","period":60,"metrics":[["CCH/${EnvironmentName}","ApiFailures",{"stat":"Sum"}],["CCH/${EnvironmentName}","DatabaseFailures",{"stat":"Sum"}],["CCH/${EnvironmentName}","BookingConflicts",{"stat":"Sum"}]]}},{"type":"metric","x":0,"y":18,"width":12,"height":6,"properties":{"region":"${AWS::Region}","title":"Host memory (runtime logs required)","view":"timeSeries","period":60,"metrics":[["CCH/${EnvironmentName}","HostMemoryUsedPercent",{"stat":"Maximum"}]]}}]}
   AuditBucket:
     Type: AWS::S3::Bucket
     Condition: TrailEnabled
@@ -455,6 +685,9 @@ Resources:
       EnableLogFileValidation: true
       EventSelectors: [{ ReadWriteType: All, IncludeManagementEvents: true }]
 Outputs:
+  VpcId: { Value: !Ref Vpc }
+  LoadBalancerArn: { Value: !Ref LoadBalancer }
+  PrivateSubnets: { Value: !Join [',', [!Ref PrivateA, !Ref PrivateB]] }
   AlbDnsName: { Value: !GetAtt LoadBalancer.DNSName }
   Table: { Value: !Ref DataTable }
   TableArn: { Value: !GetAtt DataTable.Arn }

@@ -1,0 +1,1155 @@
+{
+  "date": "2026-11-09T19:29:07.381Z",
+  "driver": "dynamodb",
+  "environment": "Local Windows host; two Node processes behind an HTTP health-checking test proxy. Not EC2, AWS ALB, HTTPS or ASG evidence.",
+  "node": "v24.19.0",
+  "host": {
+    "logicalCpus": 32,
+    "totalMemoryGiB": 31.103004455566406
+  },
+  "users": 50,
+  "rounds": 12,
+  "workloadDurationSeconds": 90.20996280000001,
+  "requests": 6249,
+  "expectedCapacityConflicts": 894,
+  "unexpectedFailures": 0,
+  "successRateExcludingExpectedConflicts": 1,
+  "apiSuccessRateExcludingExpectedConflicts": 1,
+  "apiP50Ms": 80.80609999999433,
+  "apiP95Ms": 700.8676999999952,
+  "loginP95Ms": 220.64399999999978,
+  "workerSamples": [
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 123.39453125,
+      "cpuPercent": 134.32752370960807
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 161.703125,
+      "cpuPercent": 199.94631441457966
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 142.46875,
+      "cpuPercent": 75.07822731407892
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 204.140625,
+      "cpuPercent": 61.769080295950005
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 143.23828125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 204.75390625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 143.25390625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 205.93359375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 143.7578125,
+      "cpuPercent": 1.596342619424637
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 207.3125,
+      "cpuPercent": 3.0892109308240987
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 143.83984375,
+      "cpuPercent": 3.058675761129262
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 207.3125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 156.21875,
+      "cpuPercent": 35.803791631506975
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 185.890625,
+      "cpuPercent": 82.79829435513629
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 215.234375,
+      "cpuPercent": 101.52051958521672
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 196.75390625,
+      "cpuPercent": 80.87751205253988
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.14453125,
+      "cpuPercent": 29.536171716341002
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 196.93359375,
+      "cpuPercent": 3.082826805000069
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.14453125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 197.07421875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.2109375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 197.07421875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.22265625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 197.07421875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 209.5625,
+      "cpuPercent": 12.498786367843694
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 197.875,
+      "cpuPercent": 53.65437811387889
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 228.84375,
+      "cpuPercent": 104.650594454358
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 248.82421875,
+      "cpuPercent": 93.71465697235062
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 213.953125,
+      "cpuPercent": 81.2022330614092
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.25,
+      "cpuPercent": 49.89304365491934
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 215.51953125,
+      "cpuPercent": 4.68551379699383
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.26171875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 215.52734375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.2734375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 215.53515625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.2734375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 215.5390625,
+      "cpuPercent": 3.0988329794999214
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.32421875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 219.65625,
+      "cpuPercent": 57.73161689978224
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 234.76953125,
+      "cpuPercent": 78.09551731730616
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 219.22265625,
+      "cpuPercent": 70.13067649467116
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 268.09375,
+      "cpuPercent": 60.79605091215038
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 229.828125,
+      "cpuPercent": 81.86830593118094
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 224.13671875,
+      "cpuPercent": 26.286681161234856
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 229.98046875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 224.14453125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 229.98046875,
+      "cpuPercent": 1.5873181218653574
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 224.15234375,
+      "cpuPercent": 1.4850636750751944
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 229.98828125,
+      "cpuPercent": 3.0652541184655457
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 224.15234375,
+      "cpuPercent": 1.5842522161213095
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 230,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 227.00390625,
+      "cpuPercent": 18.794769415671652
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 232.69140625,
+      "cpuPercent": 77.86019061291238
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 265.6328125,
+      "cpuPercent": 113.73199056423519
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 224.44921875,
+      "cpuPercent": 93.82057485206512
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 239.10546875,
+      "cpuPercent": 76.58590053571149
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.48828125,
+      "cpuPercent": 79.68985548139722
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 233.8046875,
+      "cpuPercent": 52.60061502105157
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.49609375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 233.8125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.5078125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 234.1015625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.5078125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 234.1015625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 227.5078125,
+      "cpuPercent": 1.4961904000035045
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 239.296875,
+      "cpuPercent": 26.355052482357493
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 236.3828125,
+      "cpuPercent": 85.87584928468942
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 276.87109375,
+      "cpuPercent": 118.78968905499035
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 238.85546875,
+      "cpuPercent": 86.33085575288098
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 247.0390625,
+      "cpuPercent": 90.44291873873468
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 243.69140625,
+      "cpuPercent": 82.61049977456737
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 250.6171875,
+      "cpuPercent": 51.400965182619586
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 243.75390625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 250.625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 243.75390625,
+      "cpuPercent": 1.495798899211679
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 250.64453125,
+      "cpuPercent": 1.5827071830473
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 243.75390625,
+      "cpuPercent": 1.5991337492480298
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 250.64453125,
+      "cpuPercent": 1.4815073804253227
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 243.75390625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 239.12890625,
+      "cpuPercent": 9.323275040382638
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 250.51953125,
+      "cpuPercent": 70.03147337764467
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.96875,
+      "cpuPercent": 107.63223363742996
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 262.7578125,
+      "cpuPercent": 83.68700939359363
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 271.58984375,
+      "cpuPercent": 82.7610361042019
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 257.42578125,
+      "cpuPercent": 60.66326428627364
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 269.48046875,
+      "cpuPercent": 70.88225835804337
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 257.44921875,
+      "cpuPercent": 17.07487870383394
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 269.48046875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 257.44921875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 269.48046875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 257.44921875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 269.48046875,
+      "cpuPercent": 1.49589093718465
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 257.44921875,
+      "cpuPercent": 1.4946472199113345
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 269.48046875,
+      "cpuPercent": 1.5988151181159653
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 238.06640625,
+      "cpuPercent": 78.57564537519754
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 256.7265625,
+      "cpuPercent": 76.55887377393218
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 259.796875,
+      "cpuPercent": 101.62713444489677
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 285.9921875,
+      "cpuPercent": 64.04491496863514
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 265.03515625,
+      "cpuPercent": 78.13255002033823
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 255.4140625,
+      "cpuPercent": 81.34627789749635
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 240.65625,
+      "cpuPercent": 76.58884100586538
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.06640625,
+      "cpuPercent": 49.325761237074346
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 242.40234375,
+      "cpuPercent": 3.099285304808703
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.06640625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 242.40234375,
+      "cpuPercent": 1.581290330933433
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.06640625,
+      "cpuPercent": 1.5838750433462097
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 242.40234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.06640625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 242.40234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 265.71875,
+      "cpuPercent": 15.49010337295505
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 277.109375,
+      "cpuPercent": 85.57238611974091
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 286.5703125,
+      "cpuPercent": 79.78394746976883
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 271.6484375,
+      "cpuPercent": 96.77593182575458
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 291.6875,
+      "cpuPercent": 81.0728048764295
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 269.453125,
+      "cpuPercent": 67.14889297755504
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 267.45703125,
+      "cpuPercent": 78.0835399897701
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 255.75390625,
+      "cpuPercent": 75.07355909248754
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.57421875,
+      "cpuPercent": 77.6620890724575
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 259.29296875,
+      "cpuPercent": 6.1340309507372
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.5234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 259.29296875,
+      "cpuPercent": 1.5829788614939009
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.5234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 259.29296875,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 266.5234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 259.3203125,
+      "cpuPercent": 3.075272960235926
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 246.08984375,
+      "cpuPercent": 45.13148804991913
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 295.14453125,
+      "cpuPercent": 76.38391173095116
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 288.296875,
+      "cpuPercent": 115.31224981181961
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 267.19921875,
+      "cpuPercent": 90.65661174561835
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 285.8515625,
+      "cpuPercent": 74.34577207489528
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 301.88671875,
+      "cpuPercent": 78.64289013509381
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 272.57421875,
+      "cpuPercent": 76.38040356409958
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 245.671875,
+      "cpuPercent": 65.54645510082779
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.33984375,
+      "cpuPercent": 59.018111220077046
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 251.55078125,
+      "cpuPercent": 21.649838283616578
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.33984375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 251.55078125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.33984375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 251.55078125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.33984375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 251.55078125,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 276.1328125,
+      "cpuPercent": 19.99571181071437
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 255.1875,
+      "cpuPercent": 63.87203782470957
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 282.1328125,
+      "cpuPercent": 66.89680361696738
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 277.59765625,
+      "cpuPercent": 85.25956425712634
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 249.30859375,
+      "cpuPercent": 98.05678165285916
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 272.66796875,
+      "cpuPercent": 57.79437660715563
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 285.38671875,
+      "cpuPercent": 87.08066831032978
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 271.70703125,
+      "cpuPercent": 87.57807585462422
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 258.24609375,
+      "cpuPercent": 63.746378657872576
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 270.859375,
+      "cpuPercent": 73.16433766837088
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 288.171875,
+      "cpuPercent": 44.85979387616358
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 270.91796875,
+      "cpuPercent": 15.49844796952448
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 289.8515625,
+      "cpuPercent": 1.4839860101670748
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 270.91796875,
+      "cpuPercent": 3.1687438277573943
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 289.8515625,
+      "cpuPercent": 1.5822521935948932
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 270.91796875,
+      "cpuPercent": 1.4997123551702776
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 289.8515625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 273.5859375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 281.3984375,
+      "cpuPercent": 29.426527676693294
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 274.8984375,
+      "cpuPercent": 54.55214234127244
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 298.26953125,
+      "cpuPercent": 59.05818304815357
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 293.71875,
+      "cpuPercent": 98.39840594582385
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 279.0390625,
+      "cpuPercent": 66.82788106861439
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 281.140625,
+      "cpuPercent": 97.99841230621102
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 286.72265625,
+      "cpuPercent": 59.33018719924674
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 296.32421875,
+      "cpuPercent": 76.56654807514592
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 277.32421875,
+      "cpuPercent": 60.95363866243371
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 280.31640625,
+      "cpuPercent": 74.9546823990211
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.234375,
+      "cpuPercent": 35.54274916531496
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 280.31640625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 280.31640625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.234375,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 280.31640625,
+      "cpuPercent": 1.5885918453807726
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.234375,
+      "cpuPercent": 1.493584308602409
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 280.31640625,
+      "cpuPercent": 0
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.234375,
+      "cpuPercent": 1.5894727629437289
+    },
+    {
+      "type": "sample",
+      "pid": 49872,
+      "rssMiB": 280.31640625,
+      "cpuPercent": 1.4957316306456163
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 274.6328125,
+      "cpuPercent": 17.135368815900396
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 279.95703125,
+      "cpuPercent": 24.539041467740837
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 253.19921875,
+      "cpuPercent": 24.69487262335288
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 253.2890625,
+      "cpuPercent": 31.096269679567605
+    },
+    {
+      "type": "sample",
+      "pid": 34992,
+      "rssMiB": 258.91015625,
+      "cpuPercent": 48.9020224507227
+    }
+  ],
+  "peakWorkerRssMiB": 301.88671875,
+  "peakWorkerCpuPercent": 199.94631441457966,
+  "routing": {
+    "34992": 3149,
+    "49620": 1,
+    "49872": 3099
+  },
+  "correctness": {
+    "roundsVerified": 12,
+    "eventConfirmed": 10,
+    "eventWaitlisted": 40,
+    "groups": 9,
+    "groupCapacity": 4,
+    "confirmedGroupRegistrations": 36,
+    "appointmentWinnersPerRound": 8,
+    "duplicateBookings": 0,
+    "overCapacity": 0
+  },
+  "localFailureTest": {
+    "successfulProbes": 50,
+    "interruptions": 0,
+    "probeWindowMs": 4768.5383,
+    "probeRequests": 50,
+    "replacementPid": 49620,
+    "sessionAndRecordPreserved": true,
+    "awsFailoverVerified": false
+  },
+  "unexpectedRequestDetails": []
+}

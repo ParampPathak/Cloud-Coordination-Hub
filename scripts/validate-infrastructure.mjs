@@ -12,6 +12,8 @@ const document = parseDocument(
       '!Select',
       '!Join',
       '!Equals',
+      '!Not',
+      '!If',
     ].map((tag) => ({ tag, resolve: (value) => value })),
   },
 );
@@ -66,6 +68,50 @@ const workflow = parseDocument(
 ).toJS();
 assert(!JSON.stringify(workflow).includes('aws-actions/'));
 assert(!JSON.stringify(workflow).includes('id-token'));
+assert.equal(template.Parameters.MinCapacity.Default, 2);
+assert.equal(template.Parameters.DesiredCapacity.Default, 2);
+for (const route of ['PrivateRoutesA', 'PrivateRoutesB'])
+  assert(
+    !resources.some(
+      (r) =>
+        r.Type === 'AWS::EC2::Route' && r.Properties.RouteTableId === route,
+    ),
+  );
+assert.equal(
+  template.Resources.ApplicationGroup.Properties.HealthCheckType,
+  'ELB',
+);
+assert.equal(
+  template.Resources.Targets.Properties.HealthCheckPath,
+  '/api/ready',
+);
+for (const alarm of [
+  'UnhealthyTargetAlarm',
+  'TargetErrorAlarm',
+  'CpuAlarm',
+  'LatencyAlarm',
+  'AvailabilityAlarm',
+  'InstanceFailureAlarm',
+])
+  assert.equal(template.Resources[alarm].Type, 'AWS::CloudWatch::Alarm');
+assert.equal(
+  template.Resources.AppSecurityGroup.Properties.SecurityGroupIngress.length,
+  1,
+);
+assert.equal(
+  template.Resources.AppSecurityGroup.Properties.SecurityGroupIngress[0]
+    .FromPort,
+  3000,
+);
+assert.equal(
+  template.Resources.AppSecurityGroup.Properties.SecurityGroupIngress[0]
+    .SourceSecurityGroupId,
+  'AlbSecurityGroup',
+);
+assert.deepEqual(template.Resources.DynamoEndpoint.Properties.RouteTableIds, [
+  'PrivateRoutesA',
+  'PrivateRoutesB',
+]);
 if (process.argv[2]) {
   const parameters = JSON.parse(readFileSync(process.argv[2], 'utf8'));
   const input = Object.fromEntries(
@@ -88,11 +134,16 @@ if (process.argv[2]) {
   for (const key of Object.keys(input))
     assert(template.Parameters[key], `Unknown parameter ${key}`);
   assert(
-    Number(input.MinCapacity ?? 1) <= Number(input.DesiredCapacity ?? 1),
+    Number(input.MinCapacity ?? template.Parameters.MinCapacity.Default) <=
+      Number(
+        input.DesiredCapacity ?? template.Parameters.DesiredCapacity.Default,
+      ),
     'MinCapacity must be <= DesiredCapacity',
   );
   assert(
-    Number(input.DesiredCapacity ?? 1) <= Number(input.MaxCapacity ?? 2),
+    Number(
+      input.DesiredCapacity ?? template.Parameters.DesiredCapacity.Default,
+    ) <= Number(input.MaxCapacity ?? template.Parameters.MaxCapacity.Default),
     'DesiredCapacity must be <= MaxCapacity',
   );
   assert(

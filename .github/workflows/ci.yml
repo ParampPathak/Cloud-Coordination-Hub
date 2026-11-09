@@ -30,6 +30,19 @@ jobs:
           DYNAMODB_ENDPOINT: http://127.0.0.1:8000
       - run: npm run test:e2e
       - run: node scripts/production-smoke.mjs
+      - run: node dist/backend/scripts/load-test.js --dynamodb
+        env:
+          DYNAMODB_ENDPOINT: http://127.0.0.1:8000
+          HUB_LOAD_ROUNDS: '3'
+          HUB_LOAD_THINK_MS: '1000'
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: performance-and-browser-evidence
+          path: |
+            artifacts/load-*.json
+            artifacts/poll-ui
+          retention-days: 7
       - run: bash -n scripts/deploy-ec2.sh
       - run: npm run infra:validate
       - uses: actions/setup-python@v7

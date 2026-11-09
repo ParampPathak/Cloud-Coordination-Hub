@@ -1,3 +1,5 @@
+> Historical single-instance prototype reference. The final scalable deployment uses [the two-AZ ALB/ASG/shared-DynamoDB runbook](FINAL_DEPLOYMENT.md). This document is not evidence of a live final deployment.
+
 # AWS presentation checklist
 
 Follow [the full deployment guide](AWS_EC2_DEPLOYMENT.md) for exact setup commands. No application is claimed deployed yet.

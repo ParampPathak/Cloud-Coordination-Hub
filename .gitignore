@@ -165,3 +165,5 @@ test-results/
 .tools/
 artifacts/
 *.local.json
+
+dynamodb-local-metadata.json

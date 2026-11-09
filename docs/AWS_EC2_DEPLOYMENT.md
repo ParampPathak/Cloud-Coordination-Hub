@@ -1,3 +1,5 @@
+> Historical single-instance prototype reference. The final scalable deployment uses [the two-AZ ALB/ASG/shared-DynamoDB runbook](FINAL_DEPLOYMENT.md). This document is not evidence of a live final deployment.
+
 # Single Ubuntu EC2 deployment
 
 This is a manual deployment plan, not evidence of an AWS deployment. No AWS credentials are required by the application. Use one Ubuntu 24.04 LTS instance, Nginx, Node 24, and persistent SQLite. The existing ALB/ASG/DynamoDB template remains an alternative; **do not deploy `infrastructure/hub.yaml` for this demo**. No GitHub Actions deployment is added or enabled.

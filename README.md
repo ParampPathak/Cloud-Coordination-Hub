@@ -1,8 +1,8 @@
 # Cloud Coordination Hub
 
-A shared workspace for events, registrations, automatic waitlists, polls, and office-hour appointments. Built for a university AWS Cloud Computing project and its midpoint evaluation.
+A shared workspace for events, registrations, automatic waitlists, polls, and office-hour appointments. Built for a university AWS Cloud Computing final project.
 
-**Current status: functional local prototype. AWS deployment is disabled; no AWS resources have been created.** GitHub Actions performs build/test validation only. Cloud infrastructure is prepared for later authorized deployment; remote workflow results must be reviewed separately.
+**Current status: application and local 50-user tests verified. AWS infrastructure is implemented and validated, not deployed.** GitHub Actions performs build/test validation only. Cloud infrastructure is prepared for later authorized deployment; remote workflow results must be reviewed separately.
 
 ## Why this project
 
@@ -14,13 +14,45 @@ Teams often juggle forms, spreadsheets, and scheduling tools. Cloud Coordination
 - Organizer-owned events, editable capacity, confirmed registrations, FIFO waitlists, atomic cancellation/promotion and duplicate protection.
 - Owner-only attendee lists and safe downloadable CSV export.
 - Standard and multiple-choice polls, per-topic capacity signups, configurable organizer voting, changes/cancellation and result visibility, draft/open/closed/archive lifecycle, and owner/admin participant management.
-- Appointment slots with concurrency-safe single booking and cancellation.
+- Office-hour schedule previews, IANA time zones, weekly recurrence, breaks/buffers, per-slot capacity, private meeting reasons, atomic rescheduling, cancellation and blocking. Participant/organizer guards prevent overlapping appointments and schedules.
+- Grouped events with configurable names/count/capacity, automatic assignment, student selection, atomic transfers, owner management/removal and CSV membership export.
 - Password authentication, public attendee signup, trusted organizer provisioning, revocable database sessions and server-side ownership checks.
 - Persistent local SQLite and a DynamoDB adapter with conditional transactions. SQLite supports local development and the documented single-instance EC2 deployment.
 - Responsive desktop/mobile interface, accessible forms/modals, real loading/empty/error states.
 - Docker, CI verification, CloudFormation and offline-image deployment preparation.
 
-CSV/Excel import, universal CSV/Excel poll exports, poll-to-event automation, multi-workspace tenancy and advanced scheduling conflict rules are final-project milestones, not functioning buttons.
+CSV/Excel import, universal CSV/Excel poll exports, poll-to-event automation, multi-workspace tenancy are future milestones, not functioning buttons.
+
+## Final implementation and measured evidence
+
+![Implemented target architecture — not deployed](docs/architecture.png)
+
+[Deployment/recovery and class demo](docs/FINAL_DEPLOYMENT.md) · [Verification and performance evidence](docs/final-verification.md) · [Editable SVG](docs/architecture.svg). Service icons are from the [official AWS package](https://aws.amazon.com/architecture/icons/).
+
+The final CloudFormation template uses a two-AZ private ASG (2/2/3), HTTPS ALB, retained/PITR shared DynamoDB, gateway endpoint, CPU/request scaling, dashboard, six alarms, application metric filters, host-memory log samples and optional private Logs/SSM endpoints. No public application IP, SSH, NAT, or bootstrap downloads. Existing Academy profile, preloaded AMI, certificate/DNS and budget review remain prerequisites.
+
+`npm run test:load` and `npm run test:load:dynamodb` run 50 concurrent HTTP users through two separate local processes, using isolated databases and a health-checking test proxy. Measured 12-round runs each made **6,249 requests**, with no unexpected errors or capacity violations: **SQLite API p95 111 ms; DynamoDB Local API p95 701 ms**. A process failure/replacement preserved records and sessions with 50/50 probes successful. These desktop results do not verify EC2 sizing, AWS ALB/ASG behavior or live HTTPS. Full results and CPU/RSS measurements are in the verification report; raw repeatable outputs go to ignored `artifacts/load-*.json`.
+
+Create grouped events through **Events → Create event → Groups (optional)**. Group capacity replaces the ordinary event capacity with count × students/group. Confirmed attendees can view/join/change/leave groups when enabled; owners move students, remove attendees and export membership. Failed transfers preserve the old assignment.
+
+Use **Scheduling → Create office-hour schedule** to preview a local date/time window, zone, duration, capacity, break, buffer and weekly repeats. A 2–4 PM window with 15 minutes yields eight slots. Students can provide a reason, book, cancel or atomically reschedule. Owners inspect students/reasons and cancel or block appointments. Unknown legacy timestamps stay unknown. Ambiguous/nonexistent DST times are rejected. Limits: 64 appointments/schedule, 500 upcoming organizer intervals, 8 weekly occurrences. Bulk schedule editing, organizer-driven relocation of another student's booking and universal spreadsheet imports are not implemented; block an available original slot and create a replacement, or explicitly resolve confirmed bookings.
+
+The safe local seed now includes a sample office-hour schedule, 9×4 grouped event, event and poll. It refuses populated storage and AWS tables. For production, provision a unique organizer through the trusted CLI and create sample resources through that account; never publish administrator passwords.
+
+SQLite and DynamoDB share an explicit multi-record transaction API. Slot/participant-guard/audit changes commit together; rescheduling includes both slots, and organizer guards serialize schedule creation. Groups remain inside the event aggregate with registrations and waitlist promotion. Sessions remain in the shared database; no sticky sessions are required.
+
+No live data was migrated. To preserve an existing SQLite database, stop application writes and use a private, unused backup path:
+
+```powershell
+npm run data:migrate -- export ./data/hub.sqlite ./artifacts/private-backup.json
+# Configure the intended DynamoDB table, region and local endpoint or approved AWS access.
+npm run data:migrate -- import ./artifacts/private-backup.json
+$env:ALLOW_DATA_IMPORT = 'true'
+npm run data:migrate -- import ./artifacts/private-backup.json --apply
+Remove-Item Env:ALLOW_DATA_IMPORT
+```
+
+Import is comparison-only by default. Applied batches insert conditionally and resume safely; existing differing records and the SQLite source are never overwritten. Keep backups private: they contain personal information/password hashes. Migration tests verify export preservation, idempotency and conflict refusal.
 
 ## Screenshots
 
@@ -114,11 +146,11 @@ node --import tsx scripts/migrate-polls.ts
 
 The command also works with SQLite (which migrates when opened). No AWS connection/deployment is needed or performed. Polls remain bounded to 2-8 options, 2,000 active participants, 4,000 stored historical selections, and a 290 KB mutation limit. Server transactions enforce capacity and atomic switching; a full destination leaves the original registration intact. Multiple-choice percentages are per participant and can sum above 100%.
 
-To check the feature, use separate organizer/student/admin sessions: publish a signup with capacity one, fill it, verify the full state in another student session, cancel and rebook, try switching to a full topic, inspect participants as owner/admin, and verify unrelated users cannot access the list. Run `npm run check`, `npm run format:check`, and `npm run test:e2e`; run `npm run test:dynamodb` when DynamoDB Local is available. Stage 2 office-hour redesign has not started.
+To check the feature, use separate organizer/student/admin sessions: publish a signup with capacity one, fill it, verify the full state in another student session, cancel and rebook, try switching to a full topic, inspect participants as owner/admin, and verify unrelated users cannot access the list. Run `npm run check`, `npm run format:check`, and `npm run test:e2e`; run `npm run test:dynamodb` when DynamoDB Local is available. Office-hour scheduling and grouped events are now implemented; see [final verification](docs/final-verification.md).
 
 ## Docker and DynamoDB Local
 
-Docker was not installed on the implementation workstation; container execution and DynamoDB Local integration are not claimed as locally verified. On a Docker-enabled workstation:
+Docker was not installed on the implementation workstation. DynamoDB Local 3.3.1 was run directly using Java and its real transactions were verified; Docker execution remains unverified locally. On a Docker-enabled workstation:
 
 ```powershell
 docker compose up --build -d
@@ -155,7 +187,7 @@ GitHub Actions installs locked dependencies, checks formatting/lint/types, runs 
 
 ## Single-instance Ubuntu EC2 preparation
 
-For the classroom presentation, follow [AWS_EC2_DEPLOYMENT.md](docs/AWS_EC2_DEPLOYMENT.md): one manually launched Ubuntu instance, Nginx, systemd, Node 24, built React/Express and persistent SQLite outside code releases. This preparation has not been deployed or pushed. No AWS credentials or GitHub Actions CD configuration are required. The existing cloud architecture below remains an alternative, not a prerequisite for this path.
+Historical single-instance prototype only: follow [AWS_EC2_DEPLOYMENT.md](docs/AWS_EC2_DEPLOYMENT.md): one manually launched Ubuntu instance, Nginx, systemd, Node 24, built React/Express and persistent SQLite outside code releases. This configuration is preserved from the merged deployment branch; no live deployment is claimed. No AWS credentials or GitHub Actions CD configuration are required. The final scalability/HA evaluation requires the two-instance shared-DynamoDB architecture below, not this SQLite prototype.
 
 Added commands: `npm run start:production` enforces production validation; `npm run test:production` builds and verifies production serving, authentication, origin checks, demo seed safeguards and data/session persistence across a process restart. `npm run user:create:built` and `npm run demo:seed:built` use compiled CLI files after building. Production demo seeding requires an explicit `ALLOW_DEMO_SEED=true` and empty SQLite storage. Existing development scripts are unchanged.
 
@@ -175,7 +207,7 @@ flowchart LR
   Trail[Existing or opt-in CloudTrail] -. management audit .-> EC2
 ```
 
-The Academy design accepts an **existing** profile (IAM is read-only), avoids Cognito, allows only configurable t2/t3 types, caps ASG parameters at nine, and defaults to one instance with maximum two. Account-wide use including image builders must remain below the nine-instance limit. No NAT is created. Private EC2 starts a preloaded image from a prepared AMI rather than downloading Docker/package dependencies.
+The Academy design accepts an **existing** profile (IAM is read-only), avoids Cognito, allows only configurable t2/t3 types, caps ASG parameters at nine, and defaults to minimum/desired two instances with maximum three. Verify actual Academy quotas and budget; template bounds are not proof of available account quota. No NAT is created. Private EC2 starts a preloaded image from a prepared AMI rather than downloading Docker/package dependencies.
 
 An existing permitted certificate/DNS and suitable instance profile/PassRole are unresolved account prerequisites. TLS is not claimed deployed. CloudWatch Logs delivery requires explicit endpoint cost opt-in plus permissions; CloudTrail creation is optional if an existing appropriate trail suffices.
 
@@ -194,7 +226,7 @@ See [API routes](docs/api.md), [database design](docs/database.md), [security co
 - [Actual verification record](docs/midpoint/verification.md)
 - [Future deployment prerequisites and cleanup](docs/midpoint/deployment.md)
 
-Next priorities: rehearse independent-user local flows; run container/DynamoDB Local verification where Docker is available; then, only after separate authorization, validate profile/certificate/AMI and deploy a reviewed change set. Final work adds measured two-instance reliability, recovery/performance evidence, stronger account lifecycle, pagination/workspace isolation, imports and poll-to-event workflows.
+Remaining live work: validate budget/session duration, quotas, profile/certificate/domain and release AMI; deploy an authorized change set; verify HTTPS, CloudWatch datapoints/log events, EC2 sizing, ALB failure handling and ASG replacement. Pagination/workspace isolation, universal imports and poll-to-event workflows remain future extensions.
 
 ## Contributors and license
 
