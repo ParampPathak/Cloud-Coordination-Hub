@@ -28,7 +28,7 @@ Commands: `npm run test:load` and `npm run test:load:dynamodb` (set `DYNAMODB_EN
 | API p95                                                |  111.16 ms |            700.87 ms |
 | Login p95                                              |  177.28 ms |            220.64 ms |
 | Peak sampled application-process RSS                   | 235.32 MiB |           301.89 MiB |
-| Peak sampled application-process CPU (100% = one core) |     102.22% |              199.95% |
+| Peak sampled application-process CPU (100% = one core) |    102.22% |              199.95% |
 | Resource samples                                       |        135 |                  181 |
 | Duplicate bookings / overcapacity                      |      0 / 0 |                0 / 0 |
 
