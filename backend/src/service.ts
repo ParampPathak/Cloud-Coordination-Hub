@@ -39,6 +39,9 @@ function owner(user: User, entity: { organizerId: string }) {
 }
 export class HubService {
   constructor(public store: Store) {}
+  // Reduce optimistic-write storms within a process. Database version conditions
+  // remain authoritative across processes; this queue stores no application data.
+  private queues = new Map<string, { tail: Promise<void>; waiting: number }>();
   private activity(user: User, resourceId: string, message: string): Activity {
     return {
       id: `${now()}#${randomUUID()}`,
@@ -50,6 +53,36 @@ export class HubService {
     };
   }
   private async mutate<T>(
+    kind: string,
+    id: string,
+    user: User,
+    message: string,
+    fn: (data: T) => void,
+  ): Promise<T> {
+    const key = `${kind}:${id}`;
+    const queue = this.queues.get(key) ?? {
+      tail: Promise.resolve(),
+      waiting: 0,
+    };
+    if (queue.waiting >= 100)
+      throw new HttpError(429, 'Too many pending changes. Please try again.');
+    const previous = queue.tail;
+    let release!: () => void;
+    queue.tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    queue.waiting++;
+    this.queues.set(key, queue);
+    await previous;
+    try {
+      return await this.mutateConditional(kind, id, user, message, fn);
+    } finally {
+      queue.waiting--;
+      release();
+      if (queue.waiting === 0) this.queues.delete(key);
+    }
+  }
+  private async mutateConditional<T>(
     kind: string,
     id: string,
     user: User,

@@ -430,6 +430,24 @@ for (const driver of [
         ),
       ).toBe(true);
     });
+    it('cancels 50 simultaneous registrations without exhausting conflict retries', async () => {
+      const event = await hubs[0].createEvent(owner, {
+        title: 'Cancellation storm',
+        description: '',
+        location: 'Room',
+        startsAt: future(),
+        capacity: 5,
+      });
+      const users = Array.from({ length: 50 }, (_, i) => ({
+        ...student(i),
+        id: randomUUID(),
+      }));
+      await Promise.all(users.map((u, i) => hubs[i % 2].register(u, event.id)));
+      await Promise.all(users.map((u, i) => hubs[i % 2].cancel(u, event.id)));
+      expect(
+        (await stores[0].get<HubEvent>('event', event.id))!.data.registrations,
+      ).toEqual([]);
+    });
     it('rolls back every write when a later version condition fails', async () => {
       const key = randomUUID();
       await stores[0].put('test', key, { ok: true }, null);

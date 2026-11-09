@@ -232,8 +232,8 @@ const percentile = (values: number[], p: number) =>
   [...values].sort((a, b) => a - b)[
     Math.min(values.length - 1, Math.ceil(values.length * p) - 1)
   ] ?? 0;
-const check = (r: { status: number }, status = 200) =>
-  assert.equal(r.status, status);
+const check = (r: { status: number; data?: unknown }, status = 200) =>
+  assert.equal(r.status, status, JSON.stringify(r.data));
 const barriers = new Map<
   string,
   { waiting: { resolve: () => void; reject: (error: unknown) => void }[] }
