@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, readFileSync } from 'node:fs';
 
 // Source and compiled CLI/server files share the same repository/package root.
-function packageRoot() {
+export function packageRoot() {
   let directory = dirname(fileURLToPath(import.meta.url));
   while (true) {
     const manifest = resolve(directory, 'package.json');
@@ -28,6 +28,7 @@ export const envSchema = z.object({
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   APP_ORIGIN: z.url().default('http://localhost:5173'),
+  ALLOW_INSECURE_HTTP: z.enum(['true', 'false']).default('false'),
   DATABASE_DRIVER: z.enum(['sqlite', 'dynamodb']).default('sqlite'),
   SQLITE_PATH: z.string().default('./data/hub.sqlite'),
   ALLOW_AWS: z.enum(['true', 'false']).default('false'),
@@ -59,13 +60,35 @@ export function allowedOrigins(config: Config): Set<string> {
 }
 export function readConfig(source = process.env): Config {
   const config = envSchema.parse(source);
+  const origin = new URL(config.APP_ORIGIN);
+  if (
+    !['http:', 'https:'].includes(origin.protocol) ||
+    origin.username ||
+    origin.password ||
+    origin.pathname !== '/' ||
+    origin.search ||
+    origin.hash
+  )
+    throw new Error(
+      'APP_ORIGIN must be an HTTP(S) origin without credentials, path, query or fragment.',
+    );
+  config.APP_ORIGIN = origin.origin;
   if (config.SQLITE_PATH !== ':memory:')
     config.SQLITE_PATH = resolve(packageRoot(), config.SQLITE_PATH);
   if (config.NODE_ENV === 'production') {
-    if (!config.APP_ORIGIN.startsWith('https://'))
+    if (
+      origin.protocol !== 'https:' &&
+      !(
+        config.ALLOW_INSECURE_HTTP === 'true' &&
+        config.DATABASE_DRIVER === 'sqlite'
+      )
+    )
       throw new Error('Production requires an HTTPS APP_ORIGIN.');
-    if (config.DATABASE_DRIVER !== 'dynamodb')
-      throw new Error('Production requires shared DynamoDB storage.');
+    if (
+      config.DATABASE_DRIVER === 'sqlite' &&
+      config.SQLITE_PATH === ':memory:'
+    )
+      throw new Error('Production SQLite requires a persistent file path.');
   }
   if (config.DATABASE_DRIVER === 'dynamodb') {
     if (config.DYNAMODB_ENDPOINT) {

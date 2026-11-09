@@ -1,0 +1,29 @@
+[Unit]
+Description=Cloud Coordination Hub
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=hub
+Group=hub
+WorkingDirectory=/opt/cloud-coordination-hub/current
+EnvironmentFile=/etc/cloud-coordination-hub.env
+Environment=PATH=/opt/cloud-coordination-hub/node/bin:/usr/bin:/bin
+ExecStart=/opt/cloud-coordination-hub/node/bin/node dist/backend/backend/src/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+KillSignal=SIGTERM
+UMask=0077
+StateDirectory=cloud-coordination-hub
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cloud-coordination-hub
+
+[Install]
+WantedBy=multi-user.target

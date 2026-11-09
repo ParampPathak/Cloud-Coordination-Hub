@@ -18,6 +18,17 @@ const server = createApp(config, store).listen(config.PORT, config.HOST, () =>
     }),
   ),
 );
+server.on('error', (error: NodeJS.ErrnoException) => {
+  console.error(
+    JSON.stringify({
+      level: 'error',
+      message: 'Server startup failed',
+      code: error.code ?? 'UNKNOWN',
+    }),
+  );
+  store.close();
+  process.exit(1);
+});
 for (const signal of ['SIGTERM', 'SIGINT'])
   process.on(signal, () => {
     server.close(() => {
