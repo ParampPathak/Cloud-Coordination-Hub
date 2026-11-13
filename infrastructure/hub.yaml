@@ -331,7 +331,7 @@ Resources:
             Ebs:
               {
                 VolumeSize: 12,
-                VolumeType: gp3,
+                VolumeType: gp2,
                 Encrypted: true,
                 DeleteOnTermination: true,
               }

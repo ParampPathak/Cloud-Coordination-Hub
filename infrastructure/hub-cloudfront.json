@@ -1,0 +1,1058 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "OPTIONAL VARIANT: AWS-managed CloudFront HTTPS hostname, private VPC origin ALB, two-AZ EC2 ASG and shared DynamoDB. Requires separate architecture/cost approval; not deployed.",
+  "Parameters": {
+    "EnvironmentName": {
+      "Type": "String",
+      "Default": "cch-final",
+      "AllowedPattern": "[a-z][a-z0-9-]{2,24}"
+    },
+    "ApplicationAmi": {
+      "Type": "AWS::EC2::Image::Id",
+      "Description": "Existing x86_64 AMI with Docker, preloaded cloud-coordination-hub:release image, and cloud-hub.service installed. No downloads in private subnets."
+    },
+    "ExistingInstanceProfile": {
+      "Type": "String",
+      "AllowedPattern": "[A-Za-z0-9+=,.@_-]+",
+      "Description": "Name of a pre-existing Academy-permitted EC2 instance profile. No IAM resources are created."
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.micro",
+      "AllowedValues": [
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "t3.micro",
+        "t3.small",
+        "t3.medium"
+      ],
+      "Description": "Confirm the selected type is approved in your Sandbox. This list does not guarantee account availability."
+    },
+    "MinCapacity": {
+      "Type": "Number",
+      "Default": 2,
+      "AllowedValues": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    },
+    "DesiredCapacity": {
+      "Type": "Number",
+      "Default": 2,
+      "AllowedValues": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    },
+    "MaxCapacity": {
+      "Type": "Number",
+      "Default": 3,
+      "AllowedValues": [1, 2, 3, 4, 5, 6, 7, 8, 9],
+      "Description": "Account total including other instances and any image builder must remain at most 9."
+    },
+    "TableName": {
+      "Type": "String",
+      "Default": "cloud-coordination-hub",
+      "AllowedPattern": "[A-Za-z0-9_.-]{3,255}"
+    },
+    "EnableLogsEndpoint": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": ["true", "false"],
+      "Description": "Explicit cost opt-in for one CloudWatch Logs interface endpoint across two AZs and Docker awslogs. Requires existing profile logging permissions."
+    },
+    "EnableCloudTrail": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": ["true", "false"],
+      "Description": "Create a regional management-event trail only if no appropriate existing trail covers the account. Check cost and permissions first."
+    },
+    "EnableManagementEndpoints": {
+      "Type": "String",
+      "Default": "false",
+      "AllowedValues": ["true", "false"],
+      "Description": "Cost opt-in for SSM and ssmmessages interface endpoints in both AZs. Requires a recent SSM agent baked in the AMI and an approved existing profile."
+    },
+    "AlarmTopicArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "(^$|arn:aws[a-z-]*:sns:[a-z0-9-]+:[0-9]{12}:[A-Za-z0-9_-]+)",
+      "Description": "Optional existing SNS topic for alarm notifications; alarms remain visible without a topic."
+    },
+    "CloudFrontOriginPrefixList": {
+      "Type": "String",
+      "AllowedPattern": "pl-[a-f0-9]+",
+      "Description": "Read-only verified us-east-1 com.amazonaws.global.cloudfront.origin-facing prefix list ID."
+    }
+  },
+  "Conditions": {
+    "ManagementEnabled": {
+      "Fn::Equals": [{ "Ref": "EnableManagementEndpoints" }, "true"]
+    },
+    "HasAlarmTopic": {
+      "Fn::Not": [{ "Fn::Equals": [{ "Ref": "AlarmTopicArn" }, ""] }]
+    },
+    "LogsEnabled": { "Fn::Equals": [{ "Ref": "EnableLogsEndpoint" }, "true"] },
+    "TrailEnabled": { "Fn::Equals": [{ "Ref": "EnableCloudTrail" }, "true"] }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.42.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [{ "Key": "Name", "Value": { "Ref": "EnvironmentName" } }]
+      }
+    },
+    "InternetGateway": { "Type": "AWS::EC2::InternetGateway" },
+    "GatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "InternetGatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+    "PublicA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "CidrBlock": "10.42.0.0/24",
+        "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": false
+      }
+    },
+    "PublicB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "CidrBlock": "10.42.1.0/24",
+        "AvailabilityZone": { "Fn::Select": [1, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": false
+      }
+    },
+    "PrivateA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "CidrBlock": "10.42.10.0/24",
+        "AvailabilityZone": { "Fn::Select": [0, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": false
+      }
+    },
+    "PrivateB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "CidrBlock": "10.42.11.0/24",
+        "AvailabilityZone": { "Fn::Select": [1, { "Fn::GetAZs": "" }] },
+        "MapPublicIpOnLaunch": false
+      }
+    },
+    "PublicRoutes": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": { "VpcId": { "Ref": "Vpc" } }
+    },
+    "PublicDefaultRoute": {
+      "Type": "AWS::EC2::Route",
+      "DependsOn": "GatewayAttachment",
+      "Properties": {
+        "RouteTableId": { "Ref": "PublicRoutes" },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "GatewayId": { "Ref": "InternetGateway" }
+      }
+    },
+    "PublicAssociationA": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "PublicA" },
+        "RouteTableId": { "Ref": "PublicRoutes" }
+      }
+    },
+    "PublicAssociationB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "PublicB" },
+        "RouteTableId": { "Ref": "PublicRoutes" }
+      }
+    },
+    "PrivateRoutesA": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": { "VpcId": { "Ref": "Vpc" } }
+    },
+    "PrivateRoutesB": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": { "VpcId": { "Ref": "Vpc" } }
+    },
+    "PrivateAssociationA": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "PrivateA" },
+        "RouteTableId": { "Ref": "PrivateRoutesA" }
+      }
+    },
+    "PrivateAssociationB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": { "Ref": "PrivateB" },
+        "RouteTableId": { "Ref": "PrivateRoutesB" }
+      }
+    },
+    "AlbSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Internal ALB accepts only CloudFront origin-facing traffic; no public origin",
+        "VpcId": { "Ref": "Vpc" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "SourcePrefixListId": { "Ref": "CloudFrontOriginPrefixList" }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3000,
+            "ToPort": 3000,
+            "CidrIp": "10.42.10.0/23"
+          }
+        ]
+      }
+    },
+    "AppSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Application accepts only ALB traffic; outbound HTTPS to permitted services",
+        "VpcId": { "Ref": "Vpc" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3000,
+            "ToPort": 3000,
+            "SourceSecurityGroupId": { "Ref": "AlbSecurityGroup" }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          }
+        ]
+      }
+    },
+    "ManagementSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Condition": "ManagementEnabled",
+      "Properties": {
+        "GroupDescription": "SSM private endpoints allow only application instances",
+        "VpcId": { "Ref": "Vpc" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "SourceSecurityGroupId": { "Ref": "AppSecurityGroup" }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "10.42.0.0/16"
+          }
+        ]
+      }
+    },
+    "SsmEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Condition": "ManagementEnabled",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "VpcEndpointType": "Interface",
+        "ServiceName": { "Fn::Sub": "com.amazonaws.${AWS::Region}.ssm" },
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [{ "Ref": "PrivateA" }, { "Ref": "PrivateB" }],
+        "SecurityGroupIds": [{ "Ref": "ManagementSecurityGroup" }]
+      }
+    },
+    "SsmMessagesEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Condition": "ManagementEnabled",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "VpcEndpointType": "Interface",
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.ssmmessages"
+        },
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [{ "Ref": "PrivateA" }, { "Ref": "PrivateB" }],
+        "SecurityGroupIds": [{ "Ref": "ManagementSecurityGroup" }]
+      }
+    },
+    "DataTable": {
+      "Type": "AWS::DynamoDB::Table",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "TableName": { "Ref": "TableName" },
+        "BillingMode": "PAY_PER_REQUEST",
+        "AttributeDefinitions": [
+          { "AttributeName": "pk", "AttributeType": "S" },
+          { "AttributeName": "sk", "AttributeType": "S" }
+        ],
+        "KeySchema": [
+          { "AttributeName": "pk", "KeyType": "HASH" },
+          { "AttributeName": "sk", "KeyType": "RANGE" }
+        ],
+        "SSESpecification": { "SSEEnabled": true },
+        "PointInTimeRecoverySpecification": {
+          "PointInTimeRecoveryEnabled": true
+        },
+        "TimeToLiveSpecification": {
+          "AttributeName": "expiresAt",
+          "Enabled": true
+        }
+      }
+    },
+    "DynamoEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "VpcEndpointType": "Gateway",
+        "ServiceName": { "Fn::Sub": "com.amazonaws.${AWS::Region}.dynamodb" },
+        "RouteTableIds": [
+          { "Ref": "PrivateRoutesA" },
+          { "Ref": "PrivateRoutesB" }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": [
+                "dynamodb:GetItem",
+                "dynamodb:Query",
+                "dynamodb:PutItem",
+                "dynamodb:UpdateItem",
+                "dynamodb:DeleteItem"
+              ],
+              "Resource": { "Fn::GetAtt": ["DataTable", "Arn"] }
+            }
+          ]
+        }
+      }
+    },
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "DependsOn": [
+        "GatewayAttachment",
+        "PrivateAssociationA",
+        "PrivateAssociationB"
+      ],
+      "Properties": {
+        "Scheme": "internal",
+        "Type": "application",
+        "Subnets": [{ "Ref": "PrivateA" }, { "Ref": "PrivateB" }],
+        "SecurityGroups": [{ "Ref": "AlbSecurityGroup" }],
+        "LoadBalancerAttributes": [
+          {
+            "Key": "routing.http.drop_invalid_header_fields.enabled",
+            "Value": "true"
+          }
+        ]
+      }
+    },
+    "Targets": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "Port": 3000,
+        "Protocol": "HTTP",
+        "TargetType": "instance",
+        "HealthCheckPath": "/api/ready",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthyThresholdCount": 2,
+        "TargetGroupAttributes": [
+          { "Key": "deregistration_delay.timeout_seconds", "Value": "30" }
+        ]
+      }
+    },
+    "LaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateData": {
+          "ImageId": { "Ref": "ApplicationAmi" },
+          "InstanceType": { "Ref": "InstanceType" },
+          "IamInstanceProfile": {
+            "Name": { "Ref": "ExistingInstanceProfile" }
+          },
+          "SecurityGroupIds": [{ "Ref": "AppSecurityGroup" }],
+          "Monitoring": { "Enabled": true },
+          "MetadataOptions": {
+            "HttpTokens": "required",
+            "HttpEndpoint": "enabled",
+            "HttpPutResponseHopLimit": 2
+          },
+          "BlockDeviceMappings": [
+            {
+              "DeviceName": "/dev/xvda",
+              "Ebs": {
+                "VolumeSize": 12,
+                "VolumeType": "gp2",
+                "Encrypted": true,
+                "DeleteOnTermination": true
+              }
+            }
+          ],
+          "UserData": {
+            "Fn::Base64": {
+              "Fn::Sub": "#!/bin/bash\nset -eu\numask 077\ncat > /etc/cloud-hub.env <<'ENV'\nNODE_ENV=production\nDEPLOYMENT_MODE=aws-multi\nHOST=0.0.0.0\nPORT=3000\nAPP_ORIGIN=https://${AppDistribution.DomainName}\nDATABASE_DRIVER=dynamodb\nDYNAMODB_TABLE=${DataTable}\nAWS_REGION=${AWS::Region}\nALLOW_AWS=true\nENV\ncat > /etc/cloud-hub-logging.env <<'ENV'\nHUB_CLOUD_LOGS=${EnableLogsEndpoint}\nHUB_LOG_GROUP=${ApplicationLogs}\nHUB_REGION=${AWS::Region}\nENV\nsystemctl enable --now cloud-hub.service\n"
+            }
+          }
+        }
+      }
+    },
+    "ApplicationGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "DependsOn": [
+        "PrivateHttpListener",
+        "DynamoEndpoint",
+        "PrivateAssociationA",
+        "PrivateAssociationB"
+      ],
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "MinInstancesInService": 1,
+          "MaxBatchSize": 1,
+          "PauseTime": "PT3M"
+        }
+      },
+      "Properties": {
+        "MinSize": { "Ref": "MinCapacity" },
+        "DesiredCapacity": { "Ref": "DesiredCapacity" },
+        "MaxSize": { "Ref": "MaxCapacity" },
+        "VPCZoneIdentifier": [{ "Ref": "PrivateA" }, { "Ref": "PrivateB" }],
+        "LaunchTemplate": {
+          "LaunchTemplateId": { "Ref": "LaunchTemplate" },
+          "Version": { "Fn::GetAtt": ["LaunchTemplate", "LatestVersionNumber"] }
+        },
+        "TargetGroupARNs": [{ "Ref": "Targets" }],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 180,
+        "DefaultInstanceWarmup": 180,
+        "MetricsCollection": [
+          {
+            "Granularity": "1Minute",
+            "Metrics": [
+              "GroupInServiceInstances",
+              "GroupDesiredCapacity",
+              "GroupTotalInstances"
+            ]
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": { "Ref": "EnvironmentName" },
+            "PropagateAtLaunch": true
+          }
+        ]
+      }
+    },
+    "RequestScaling": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": { "Ref": "ApplicationGroup" },
+        "PolicyType": "TargetTrackingScaling",
+        "TargetTrackingConfiguration": {
+          "TargetValue": 300,
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ALBRequestCountPerTarget",
+            "ResourceLabel": {
+              "Fn::Join": [
+                "/",
+                [
+                  { "Fn::GetAtt": ["LoadBalancer", "LoadBalancerFullName"] },
+                  { "Fn::GetAtt": ["Targets", "TargetGroupFullName"] }
+                ]
+              ]
+            }
+          }
+        }
+      }
+    },
+    "CpuScaling": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": { "Ref": "ApplicationGroup" },
+        "PolicyType": "TargetTrackingScaling",
+        "TargetTrackingConfiguration": {
+          "TargetValue": 60,
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+          }
+        }
+      }
+    },
+    "ApplicationLogs": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": { "Fn::Sub": "/cch/${EnvironmentName}" },
+        "RetentionInDays": 7
+      }
+    },
+    "LogsSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Condition": "LogsEnabled",
+      "Properties": {
+        "GroupDescription": "CloudWatch Logs endpoint accepts application HTTPS",
+        "VpcId": { "Ref": "Vpc" },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "SourceSecurityGroupId": { "Ref": "AppSecurityGroup" }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "10.42.0.0/16"
+          }
+        ]
+      }
+    },
+    "LogsEndpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Condition": "LogsEnabled",
+      "Properties": {
+        "VpcId": { "Ref": "Vpc" },
+        "VpcEndpointType": "Interface",
+        "ServiceName": { "Fn::Sub": "com.amazonaws.${AWS::Region}.logs" },
+        "PrivateDnsEnabled": true,
+        "SubnetIds": [{ "Ref": "PrivateA" }, { "Ref": "PrivateB" }],
+        "SecurityGroupIds": [{ "Ref": "LogsSecurityGroup" }],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
+              "Resource": { "Fn::Sub": "${ApplicationLogs.Arn}" }
+            }
+          ]
+        }
+      }
+    },
+    "ApiFailureMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.status >= 500 }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "ApiFailures",
+            "MetricValue": "1",
+            "DefaultValue": 0
+          }
+        ]
+      }
+    },
+    "DatabaseFailureMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.category = \"DatabaseFailure\" }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "DatabaseFailures",
+            "MetricValue": "1",
+            "DefaultValue": 0
+          }
+        ]
+      }
+    },
+    "BookingConflictMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.category = \"BookingConflict\" }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "BookingConflicts",
+            "MetricValue": "1",
+            "DefaultValue": 0
+          }
+        ]
+      }
+    },
+    "MemoryMetric": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.category = \"RuntimeMetrics\" }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "HostMemoryUsedPercent",
+            "MetricValue": "$.memoryUsedPercent",
+            "Unit": "Percent"
+          }
+        ]
+      }
+    },
+    "UnhealthyTargetAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "One or more unhealthy targets for two consecutive minutes",
+        "Namespace": "AWS/ApplicationELB",
+        "MetricName": "UnHealthyHostCount",
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": { "Fn::GetAtt": ["LoadBalancer", "LoadBalancerFullName"] }
+          },
+          {
+            "Name": "TargetGroup",
+            "Value": { "Fn::GetAtt": ["Targets", "TargetGroupFullName"] }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "missing",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [{ "Ref": "AlarmTopicArn" }],
+            { "Ref": "AWS::NoValue" }
+          ]
+        }
+      }
+    },
+    "TargetErrorAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Five or more target HTTP 5xx errors per minute for two minutes",
+        "Namespace": "AWS/ApplicationELB",
+        "MetricName": "HTTPCode_Target_5XX_Count",
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": { "Fn::GetAtt": ["LoadBalancer", "LoadBalancerFullName"] }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "Threshold": 5,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [{ "Ref": "AlarmTopicArn" }],
+            { "Ref": "AWS::NoValue" }
+          ]
+        }
+      }
+    },
+    "CpuAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Average ASG CPU over 75 percent for five minutes; scaling target is 60 percent",
+        "Namespace": "AWS/EC2",
+        "MetricName": "CPUUtilization",
+        "Dimensions": [
+          {
+            "Name": "AutoScalingGroupName",
+            "Value": { "Ref": "ApplicationGroup" }
+          }
+        ],
+        "Statistic": "Average",
+        "Period": 60,
+        "EvaluationPeriods": 5,
+        "Threshold": 75,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "missing",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [{ "Ref": "AlarmTopicArn" }],
+            { "Ref": "AWS::NoValue" }
+          ]
+        }
+      }
+    },
+    "LatencyAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Target p95 response time above one second for three minutes",
+        "Namespace": "AWS/ApplicationELB",
+        "MetricName": "TargetResponseTime",
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": { "Fn::GetAtt": ["LoadBalancer", "LoadBalancerFullName"] }
+          }
+        ],
+        "ExtendedStatistic": "p95",
+        "Period": 60,
+        "EvaluationPeriods": 3,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "missing",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [{ "Ref": "AlarmTopicArn" }],
+            { "Ref": "AWS::NoValue" }
+          ]
+        }
+      }
+    },
+    "AvailabilityAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "Fewer than two healthy application targets for two minutes",
+        "Namespace": "AWS/ApplicationELB",
+        "MetricName": "HealthyHostCount",
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": { "Fn::GetAtt": ["LoadBalancer", "LoadBalancerFullName"] }
+          },
+          {
+            "Name": "TargetGroup",
+            "Value": { "Fn::GetAtt": ["Targets", "TargetGroupFullName"] }
+          }
+        ],
+        "Statistic": "Minimum",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "Threshold": 2,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "breaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [{ "Ref": "AlarmTopicArn" }],
+            { "Ref": "AWS::NoValue" }
+          ]
+        }
+      }
+    },
+    "InstanceFailureAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "AlarmDescription": "EC2 status check failure in the ASG for two minutes",
+        "Namespace": "AWS/EC2",
+        "MetricName": "StatusCheckFailed",
+        "Dimensions": [
+          {
+            "Name": "AutoScalingGroupName",
+            "Value": { "Ref": "ApplicationGroup" }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 2,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "missing",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [{ "Ref": "AlarmTopicArn" }],
+            { "Ref": "AWS::NoValue" }
+          ]
+        }
+      }
+    },
+    "PageQueryRowsFilter": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.queryExamined = * }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "PageQueryRows",
+            "MetricValue": "$.queryExamined"
+          }
+        ]
+      }
+    },
+    "PageQueryLatencyFilter": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.queryMs = * }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "PageQueryMilliseconds",
+            "MetricValue": "$.queryMs"
+          }
+        ]
+      }
+    },
+    "RequestTimeoutFilter": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Properties": {
+        "LogGroupName": { "Ref": "ApplicationLogs" },
+        "FilterPattern": "{ $.category = \"RequestTimeout\" }",
+        "MetricTransformations": [
+          {
+            "MetricNamespace": { "Fn::Sub": "CCH/${EnvironmentName}" },
+            "MetricName": "RequestTimeouts",
+            "MetricValue": "1"
+          }
+        ]
+      }
+    },
+    "MonitoringDashboard": {
+      "Type": "AWS::CloudWatch::Dashboard",
+      "Properties": {
+        "DashboardName": { "Fn::Sub": "${EnvironmentName}-health" },
+        "DashboardBody": {
+          "Fn::Sub": "{\"widgets\":[{\"type\":\"metric\",\"x\":0,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Requests and HTTP errors\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"AWS/ApplicationELB\",\"RequestCount\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",{\"stat\":\"Sum\"}],[\"AWS/ApplicationELB\",\"HTTPCode_Target_4XX_Count\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",{\"stat\":\"Sum\"}],[\"AWS/ApplicationELB\",\"HTTPCode_Target_5XX_Count\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",{\"stat\":\"Sum\"}],[\"AWS/ApplicationELB\",\"HTTPCode_ELB_5XX_Count\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",{\"stat\":\"Sum\"}]]}},{\"type\":\"metric\",\"x\":12,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Target response latency\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"AWS/ApplicationELB\",\"TargetResponseTime\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",{\"stat\":\"p50\"}],[\"AWS/ApplicationELB\",\"TargetResponseTime\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",{\"stat\":\"p95\"}]]}},{\"type\":\"metric\",\"x\":0,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Healthy and unhealthy targets\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"AWS/ApplicationELB\",\"HealthyHostCount\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",\"TargetGroup\",\"${Targets.TargetGroupFullName}\",{\"stat\":\"Minimum\"}],[\"AWS/ApplicationELB\",\"UnHealthyHostCount\",\"LoadBalancer\",\"${LoadBalancer.LoadBalancerFullName}\",\"TargetGroup\",\"${Targets.TargetGroupFullName}\",{\"stat\":\"Maximum\"}]]}},{\"type\":\"metric\",\"x\":12,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"CPU and EC2 failures\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"AWS/EC2\",\"CPUUtilization\",\"AutoScalingGroupName\",\"${ApplicationGroup}\",{\"stat\":\"Average\"}],[\"AWS/EC2\",\"StatusCheckFailed\",\"AutoScalingGroupName\",\"${ApplicationGroup}\",{\"stat\":\"Maximum\"}]]}},{\"type\":\"metric\",\"x\":0,\"y\":12,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Auto Scaling capacity\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"AWS/AutoScaling\",\"GroupInServiceInstances\",\"AutoScalingGroupName\",\"${ApplicationGroup}\",{\"stat\":\"Average\"}],[\"AWS/AutoScaling\",\"GroupDesiredCapacity\",\"AutoScalingGroupName\",\"${ApplicationGroup}\",{\"stat\":\"Average\"}],[\"AWS/AutoScaling\",\"GroupTotalInstances\",\"AutoScalingGroupName\",\"${ApplicationGroup}\",{\"stat\":\"Average\"}]]}},{\"type\":\"metric\",\"x\":12,\"y\":12,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Application failures and booking contention (logs required)\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"CCH/${EnvironmentName}\",\"ApiFailures\",{\"stat\":\"Sum\"}],[\"CCH/${EnvironmentName}\",\"DatabaseFailures\",{\"stat\":\"Sum\"}],[\"CCH/${EnvironmentName}\",\"BookingConflicts\",{\"stat\":\"Sum\"}]]}},{\"type\":\"metric\",\"x\":0,\"y\":18,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Host memory (runtime logs required)\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"CCH/${EnvironmentName}\",\"HostMemoryUsedPercent\",{\"stat\":\"Maximum\"}]]}},{\"type\":\"metric\",\"x\":12,\"y\":18,\"width\":12,\"height\":6,\"properties\":{\"region\":\"${AWS::Region}\",\"title\":\"Bounded queries and request timeouts (logs required)\",\"view\":\"timeSeries\",\"period\":60,\"metrics\":[[\"CCH/${EnvironmentName}\",\"PageQueryRows\",{\"stat\":\"Sum\"}],[\"CCH/${EnvironmentName}\",\"PageQueryMilliseconds\",{\"stat\":\"p95\"}],[\"CCH/${EnvironmentName}\",\"RequestTimeouts\",{\"stat\":\"Sum\"}]]}}]}\n"
+        }
+      }
+    },
+    "AuditBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Condition": "TrailEnabled",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            { "ServerSideEncryptionByDefault": { "SSEAlgorithm": "AES256" } }
+          ]
+        },
+        "PublicAccessBlockConfiguration": {
+          "BlockPublicAcls": true,
+          "BlockPublicPolicy": true,
+          "IgnorePublicAcls": true,
+          "RestrictPublicBuckets": true
+        },
+        "LifecycleConfiguration": {
+          "Rules": [
+            { "Id": "ExpireAudit", "Status": "Enabled", "ExpirationInDays": 30 }
+          ]
+        }
+      }
+    },
+    "AuditBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Condition": "TrailEnabled",
+      "Properties": {
+        "Bucket": { "Ref": "AuditBucket" },
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "cloudtrail.amazonaws.com" },
+              "Action": "s3:GetBucketAcl",
+              "Resource": { "Fn::GetAtt": ["AuditBucket", "Arn"] },
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${EnvironmentName}-audit"
+                  }
+                }
+              }
+            },
+            {
+              "Effect": "Allow",
+              "Principal": { "Service": "cloudtrail.amazonaws.com" },
+              "Action": "s3:PutObject",
+              "Resource": {
+                "Fn::Sub": "${AuditBucket.Arn}/AWSLogs/${AWS::AccountId}/*"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "s3:x-amz-acl": "bucket-owner-full-control",
+                  "aws:SourceArn": {
+                    "Fn::Sub": "arn:${AWS::Partition}:cloudtrail:${AWS::Region}:${AWS::AccountId}:trail/${EnvironmentName}-audit"
+                  }
+                }
+              }
+            },
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "s3:*",
+              "Resource": [
+                { "Fn::GetAtt": ["AuditBucket", "Arn"] },
+                { "Fn::Sub": "${AuditBucket.Arn}/*" }
+              ],
+              "Condition": { "Bool": { "aws:SecureTransport": "false" } }
+            }
+          ]
+        }
+      }
+    },
+    "AuditTrail": {
+      "Type": "AWS::CloudTrail::Trail",
+      "Condition": "TrailEnabled",
+      "DependsOn": "AuditBucketPolicy",
+      "Properties": {
+        "TrailName": { "Fn::Sub": "${EnvironmentName}-audit" },
+        "S3BucketName": { "Ref": "AuditBucket" },
+        "IsLogging": true,
+        "IsMultiRegionTrail": false,
+        "IncludeGlobalServiceEvents": false,
+        "EnableLogFileValidation": true,
+        "EventSelectors": [
+          { "ReadWriteType": "All", "IncludeManagementEvents": true }
+        ]
+      }
+    },
+    "PrivateHttpListener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "LoadBalancerArn": { "Ref": "LoadBalancer" },
+        "Port": 80,
+        "Protocol": "HTTP",
+        "DefaultActions": [
+          { "Type": "forward", "TargetGroupArn": { "Ref": "Targets" } }
+        ]
+      }
+    },
+    "AppVpcOrigin": {
+      "Type": "AWS::CloudFront::VpcOrigin",
+      "DependsOn": ["PrivateHttpListener"],
+      "Properties": {
+        "VpcOriginEndpointConfig": {
+          "Name": { "Fn::Sub": "${EnvironmentName}-origin" },
+          "Arn": { "Ref": "LoadBalancer" },
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "http-only",
+          "OriginSSLProtocols": ["TLSv1.2"]
+        }
+      }
+    },
+    "AppNoCachePolicy": {
+      "Type": "AWS::CloudFront::CachePolicy",
+      "Properties": {
+        "CachePolicyConfig": {
+          "Name": { "Fn::Sub": "${EnvironmentName}-no-cache" },
+          "DefaultTTL": 0,
+          "MinTTL": 0,
+          "MaxTTL": 0,
+          "ParametersInCacheKeyAndForwardedToOrigin": {
+            "CookiesConfig": { "CookieBehavior": "none" },
+            "HeadersConfig": { "HeaderBehavior": "none" },
+            "QueryStringsConfig": { "QueryStringBehavior": "none" },
+            "EnableAcceptEncodingGzip": false,
+            "EnableAcceptEncodingBrotli": false
+          }
+        }
+      }
+    },
+    "AppOriginRequestPolicy": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy",
+      "Properties": {
+        "OriginRequestPolicyConfig": {
+          "Name": { "Fn::Sub": "${EnvironmentName}-forward-viewer" },
+          "CookiesConfig": { "CookieBehavior": "all" },
+          "HeadersConfig": {
+            "HeaderBehavior": "allExcept",
+            "Headers": ["host"]
+          },
+          "QueryStringsConfig": { "QueryStringBehavior": "all" }
+        }
+      }
+    },
+    "AppDistribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": true,
+          "Comment": {
+            "Fn::Sub": "${EnvironmentName}: HTTPS via AWS-managed hostname; private ALB origin"
+          },
+          "HttpVersion": "http2",
+          "IPV6Enabled": true,
+          "PriceClass": "PriceClass_100",
+          "ViewerCertificate": { "CloudFrontDefaultCertificate": true },
+          "CustomErrorResponses": [
+            { "ErrorCode": 400, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 403, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 404, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 405, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 414, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 416, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 500, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 501, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 502, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 503, "ErrorCachingMinTTL": 0 },
+            { "ErrorCode": 504, "ErrorCachingMinTTL": 0 }
+          ],
+          "Origins": [
+            {
+              "Id": "private-app",
+              "DomainName": { "Fn::GetAtt": ["LoadBalancer", "DNSName"] },
+              "VpcOriginConfig": {
+                "VpcOriginId": { "Fn::GetAtt": ["AppVpcOrigin", "Id"] },
+                "OriginReadTimeout": 30,
+                "OriginKeepaliveTimeout": 5
+              }
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "private-app",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": [
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PUT",
+              "PATCH",
+              "POST",
+              "DELETE"
+            ],
+            "CachedMethods": ["GET", "HEAD"],
+            "CachePolicyId": { "Ref": "AppNoCachePolicy" },
+            "OriginRequestPolicyId": { "Ref": "AppOriginRequestPolicy" },
+            "Compress": false
+          }
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "VpcId": { "Value": { "Ref": "Vpc" } },
+    "LoadBalancerArn": { "Value": { "Ref": "LoadBalancer" } },
+    "PrivateSubnets": {
+      "Value": {
+        "Fn::Join": [",", [{ "Ref": "PrivateA" }, { "Ref": "PrivateB" }]]
+      }
+    },
+    "AlbDnsName": { "Value": { "Fn::GetAtt": ["LoadBalancer", "DNSName"] } },
+    "Table": { "Value": { "Ref": "DataTable" } },
+    "TableArn": { "Value": { "Fn::GetAtt": ["DataTable", "Arn"] } },
+    "AutoScalingGroup": { "Value": { "Ref": "ApplicationGroup" } },
+    "TargetGroupArn": { "Value": { "Ref": "Targets" } },
+    "LogGroup": { "Value": { "Ref": "ApplicationLogs" } },
+    "ApplicationUrl": {
+      "Value": { "Fn::Sub": "https://${AppDistribution.DomainName}" }
+    },
+    "CloudFrontDistribution": { "Value": { "Ref": "AppDistribution" } },
+    "CloudFrontVpcOrigin": { "Value": { "Fn::GetAtt": ["AppVpcOrigin", "Id"] } }
+  }
+}

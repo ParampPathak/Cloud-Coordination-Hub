@@ -62,6 +62,12 @@ assert.equal(
   'Gateway',
 );
 assert.equal(template.Resources.HttpsListener.Properties.Protocol, 'HTTPS');
+assert.equal(
+  template.Resources.LaunchTemplate.Properties.LaunchTemplateData
+    .BlockDeviceMappings[0].Ebs.VolumeType,
+  'gp2',
+  'This Academy Sandbox permits gp2 EBS only.',
+);
 assert(!JSON.stringify(template.Resources.LaunchTemplate).includes('apt-get'));
 const workflow = parseDocument(
   readFileSync('.github/workflows/ci.yml', 'utf8'),

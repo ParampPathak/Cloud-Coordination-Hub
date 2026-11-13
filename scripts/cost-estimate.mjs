@@ -18,8 +18,8 @@ const rows = [
     hours * 2 * 0.005,
   ],
   [
-    '12 GiB gp3 per instance (illustrative $0.08 / GiB-month, 730h)',
-    (hours / 730) * instances * 12 * 0.08,
+    '12 GiB gp2 per instance (illustrative $0.10 / GiB-month, 730h)',
+    (hours / 730) * instances * 12 * 0.1,
   ],
 ];
 for (const [name, cost] of rows) console.log(`${name}: $${cost.toFixed(2)}`);

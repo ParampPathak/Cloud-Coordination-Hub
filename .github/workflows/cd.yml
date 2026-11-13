@@ -35,6 +35,7 @@ jobs:
             dist/frontend/
             dist/backend/backend/
             dist/backend/shared/
+            dist/backend/scripts/
             package.json
             package-lock.json
             Dockerfile

@@ -46,11 +46,12 @@ jobs:
       - run: bash -n scripts/deploy-ec2.sh
       - run: bash -n scripts/install-offline.sh
       - run: npm run infra:validate
+      - run: node scripts/prepare-cloudfront-template.mjs --check
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install -r infrastructure/requirements.txt
-      - run: cfn-lint infrastructure/hub.yaml infrastructure/single-ec2.yaml
+      - run: cfn-lint infrastructure/hub.yaml infrastructure/single-ec2.yaml infrastructure/hub-cloudfront.json
       - run: docker build -t cloud-coordination-hub:ci .
       - uses: actions/upload-artifact@v7
         with:
