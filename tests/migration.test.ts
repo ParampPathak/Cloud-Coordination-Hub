@@ -1,3 +1,4 @@
+import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -118,3 +119,120 @@ describe('Non-destructive database migration', () => {
     },
   );
 });
+
+it.skipIf(process.env.RUN_DYNAMODB_TESTS !== 'true')(
+  'requires and safely rebuilds summary and activity indexes for a populated legacy table',
+  async () => {
+    const table = `hub-read-model-${randomUUID()}`,
+      endpoint = process.env.DYNAMODB_ENDPOINT ?? 'http://127.0.0.1:8000';
+    const client = new DynamoDBClient({
+      endpoint,
+      region: 'us-east-1',
+      credentials: { accessKeyId: 'local', secretAccessKey: 'local' },
+    });
+    const doc = DynamoDBDocumentClient.from(client),
+      store = new DynamoStore(
+        readConfig({
+          DATABASE_DRIVER: 'dynamodb',
+          DYNAMODB_ENDPOINT: endpoint,
+          DYNAMODB_TABLE: table,
+        }),
+      );
+    try {
+      await client.send(
+        new CreateTableCommand({
+          TableName: table,
+          BillingMode: 'PAY_PER_REQUEST',
+          AttributeDefinitions: [
+            { AttributeName: 'pk', AttributeType: 'S' },
+            { AttributeName: 'sk', AttributeType: 'S' },
+          ],
+          KeySchema: [
+            { AttributeName: 'pk', KeyType: 'HASH' },
+            { AttributeName: 'sk', KeyType: 'RANGE' },
+          ],
+        }),
+      );
+      await doc.send(
+        new PutCommand({
+          TableName: table,
+          Item: {
+            pk: 'event',
+            sk: 'old',
+            version: 1,
+            data: {
+              id: 'old',
+              organizerId: 'owner',
+              registrations: [{ userId: 'student', status: 'confirmed' }],
+            },
+          },
+        }),
+      );
+      await doc.send(
+        new PutCommand({
+          TableName: table,
+          Item: {
+            pk: 'activity',
+            sk: 'old-action',
+            version: 1,
+            data: {
+              id: 'old-action',
+              actorId: 'student',
+              resourceId: 'old',
+              message: 'Registered',
+              createdAt: '2026-01-01T00:00:00Z',
+            },
+          },
+        }),
+      );
+      await expect(store.ready()).rejects.toMatchObject({ status: 503 });
+      const env = {
+        ...process.env,
+        DATABASE_DRIVER: 'dynamodb',
+        DYNAMODB_ENDPOINT: endpoint,
+        DYNAMODB_TABLE: table,
+        ALLOW_AWS: 'false',
+      };
+      const migrate = (args: string[], apply = false) =>
+        spawnSync(
+          process.execPath,
+          ['--import', 'tsx', 'scripts/rebuild-summary.ts', ...args],
+          {
+            env: {
+              ...env,
+              ...(apply ? { ALLOW_SUMMARY_REBUILD: 'true' } : {}),
+            },
+            encoding: 'utf8',
+          },
+        );
+      const preview = migrate([]);
+      expect(preview.status, preview.stderr).toBe(0);
+      await expect(store.ready()).rejects.toMatchObject({ status: 503 });
+      expect(migrate(['--apply']).status).not.toBe(0);
+      const applied = migrate(['--apply'], true);
+      expect(applied.status, applied.stderr).toBe(0);
+      await store.ready();
+      expect(await store.summary()).toEqual({
+        events: 1,
+        confirmed: 1,
+        waitlisted: 0,
+        activePolls: 0,
+      });
+      expect((await store.page('activity-user:owner', 5)).items).toHaveLength(
+        1,
+      );
+      expect((await store.page('activity-user:student', 5)).items).toHaveLength(
+        1,
+      );
+      expect((await store.get('event', 'old'))!.version).toBe(1);
+      expect(migrate(['--apply'], true).status).toBe(0);
+      expect((await store.page('activity-user:owner', 5)).items).toHaveLength(
+        1,
+      );
+    } finally {
+      store.close();
+      await client.send(new DeleteTableCommand({ TableName: table }));
+      client.destroy();
+    }
+  },
+);

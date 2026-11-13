@@ -161,13 +161,16 @@ export class HubService {
       registrations: [],
       nextSequence: 1,
     };
-    await this.store.put(
-      'event',
-      event.id,
-      event,
-      null,
-      this.activity(user, event.id, `Created ${event.title}`),
-    );
+    if (
+      !(await this.store.put(
+        'event',
+        event.id,
+        event,
+        null,
+        this.activity(user, event.id, `Created ${event.title}`),
+      ))
+    )
+      throw new HttpError(409, 'This resource is busy. Please try again.');
     return this.eventView(event, user);
   }
   async editEvent(
@@ -333,13 +336,16 @@ export class HubService {
       entries: [],
       schemaVersion: 1,
     };
-    await this.store.put(
-      'poll',
-      poll.id,
-      poll,
-      null,
-      this.activity(user, poll.id, 'Created poll'),
-    );
+    if (
+      !(await this.store.put(
+        'poll',
+        poll.id,
+        poll,
+        null,
+        this.activity(user, poll.id, 'Created poll'),
+      ))
+    )
+      throw new HttpError(409, 'This resource is busy. Please try again.');
     return this.pollView(poll, user);
   }
   async vote(user: User, id: string, option: number) {
@@ -755,10 +761,18 @@ export class HubService {
   }
   async snapshot(user: User): Promise<Snapshot> {
     const [events, polls, slots, activities] = await Promise.all([
-      this.store.list<HubEvent>('event'),
-      this.store.list<Poll>('poll'),
-      this.store.list<Slot>('slot'),
-      this.store.list<Activity>('activity'),
+      this.store
+        .page<HubEvent>('event', 50, undefined, false)
+        .then((page) => page.items),
+      this.store
+        .page<Poll>('poll', 50, undefined, false)
+        .then((page) => page.items),
+      this.store
+        .page<Slot>('slot', 50, undefined, false)
+        .then((page) => page.items),
+      this.store
+        .page<Activity>('activity', 50, undefined, true)
+        .then((page) => page.items),
     ]);
     const anonymousPolls = new Set(
       polls

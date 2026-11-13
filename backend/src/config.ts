@@ -25,6 +25,13 @@ export const envSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
+  DEPLOYMENT_MODE: z.enum(['local', 'ec2', 'aws-multi']).default('local'),
+  SESSION_CLEANUP_SECONDS: z.coerce
+    .number()
+    .int()
+    .min(60)
+    .max(86400)
+    .default(900),
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   APP_ORIGIN: z.url().default('http://localhost:5173'),
@@ -90,6 +97,11 @@ export function readConfig(source = process.env): Config {
     )
       throw new Error('Production SQLite requires a persistent file path.');
   }
+  if (
+    config.DEPLOYMENT_MODE === 'aws-multi' &&
+    (config.DATABASE_DRIVER !== 'dynamodb' || config.DYNAMODB_ENDPOINT)
+  )
+    throw new Error('Multi-instance AWS requires shared Amazon DynamoDB.');
   if (config.DATABASE_DRIVER === 'dynamodb') {
     if (config.DYNAMODB_ENDPOINT) {
       const url = new URL(config.DYNAMODB_ENDPOINT);

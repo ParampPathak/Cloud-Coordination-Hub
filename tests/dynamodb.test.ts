@@ -155,3 +155,71 @@ describe.skipIf(process.env.RUN_DYNAMODB_TESTS !== 'true')(
     });
   },
 );
+
+describe.skipIf(process.env.RUN_DYNAMODB_TESTS !== 'true')(
+  'DynamoDB bounded pages and counters',
+  () => {
+    it('keeps counters consistent with concurrent clients and deletion', async () => {
+      const config = readConfig({
+        DATABASE_DRIVER: 'dynamodb',
+        DYNAMODB_ENDPOINT:
+          process.env.DYNAMODB_ENDPOINT ?? 'http://127.0.0.1:8000',
+        DYNAMODB_TABLE:
+          process.env.DYNAMODB_TABLE ?? 'cloud-coordination-local',
+      });
+      const a = new DynamoStore(config),
+        b = new DynamoStore(config);
+      const id = randomUUID();
+      const owner: User = {
+        id,
+        name: 'Owner',
+        email: 'owner@example.test',
+        role: 'organizer',
+      };
+      const sa = new HubService(a),
+        sb = new HubService(b);
+      let eventId = '';
+      try {
+        const before = await a.summary();
+        const event = await sa.createEvent(owner, {
+          title: 'Counters',
+          description: '',
+          location: 'Room',
+          startsAt: new Date(Date.now() + 86400000).toISOString(),
+          capacity: 1,
+        });
+        eventId = event.id;
+        await Promise.all(
+          Array.from({ length: 10 }, (_, i) =>
+            (i % 2 ? sa : sb).register(
+              { ...owner, id: `${id}-${i}`, role: 'user' },
+              event.id,
+            ),
+          ),
+        );
+        const after = await b.summary();
+        expect(after.events - before.events).toBe(1);
+        expect(after.confirmed - before.confirmed).toBe(1);
+        expect(after.waitlisted - before.waitlisted).toBe(9);
+        const record = (await a.get<HubEvent>('event', event.id))!;
+        expect(
+          await a.put(
+            'event',
+            event.id,
+            { ...record.data, registrations: [] },
+            record.version - 1,
+          ),
+        ).toBe(false);
+        expect(await b.summary()).toEqual(after);
+        expect((await b.page('event', 1)).examined).toBeLessThanOrEqual(1);
+        await a.remove('event', event.id);
+        eventId = '';
+        expect(await b.summary()).toEqual(before);
+      } finally {
+        if (eventId) await a.remove('event', eventId);
+        a.close();
+        b.close();
+      }
+    });
+  },
+);

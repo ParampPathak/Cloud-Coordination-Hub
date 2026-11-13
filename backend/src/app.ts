@@ -3,6 +3,7 @@ import {
   generateSchedule,
   scheduleSchema,
 } from './scheduling.js';
+import { resourcePage, type Kind } from './pages.js';
 import { pollSchema } from './polls.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
@@ -121,13 +122,20 @@ export function createApp(config: Config, store: Store, logging = true) {
                 : 'Request'),
             status: res.statusCode,
             durationMs: Math.round(performance.now() - started),
+            queryExamined: res.locals.queryExamined,
+            queryMs: res.locals.queryMs,
           }),
         ),
       );
     next();
   });
   app.get('/api/health', (_req, res) =>
-    res.json({ status: 'ok', database: store.kind }),
+    res.json({
+      status: 'ok',
+      database: store.kind,
+      deployment: config.DEPLOYMENT_MODE,
+      https: config.APP_ORIGIN.startsWith('https:'),
+    }),
   );
   app.get('/api/ready', async (_req, res) => {
     try {
@@ -151,7 +159,7 @@ export function createApp(config: Config, store: Store, logging = true) {
     '/api/auth',
     rateLimit({
       windowMs: 15 * 60_000,
-      limit: 160,
+      limit: 400,
       skip: (req) => req.method === 'GET',
       standardHeaders: 'draft-8',
       legacyHeaders: false,
@@ -186,6 +194,22 @@ export function createApp(config: Config, store: Store, logging = true) {
     path: '/',
     maxAge: 8 * 60 * 60 * 1000,
   };
+  app.use(
+    '/api/auth/login',
+    rateLimit({
+      windowMs: 15 * 60_000,
+      limit: 20,
+      keyGenerator: (req) =>
+        tokenKey(
+          typeof req.body?.email === 'string'
+            ? req.body.email.trim().toLowerCase()
+            : 'invalid',
+        ),
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      skipSuccessfulRequests: true,
+    }),
+  );
   app.post('/api/auth/login', async (req, res) => {
     const input = credentials.parse(req.body);
     const result = await login(store, input.email, input.password);
@@ -217,9 +241,39 @@ export function createApp(config: Config, store: Store, logging = true) {
   const user = (res: express.Response) => res.locals.user as User;
   const id = (req: express.Request) => z.uuid().parse(req.params.id);
   app.get('/api/auth/me', (_req, res) => res.json(user(res)));
-  app.get('/api/snapshot', async (_req, res) =>
-    res.json(await service.snapshot(user(res))),
-  );
+  app.get('/api/summary', async (_req, res) => res.json(await store.summary()));
+  for (const [path, kind] of Object.entries({
+    events: 'event',
+    polls: 'poll',
+    appointments: 'slot',
+    activities: 'activity',
+  })) {
+    app.get(`/api/${path}`, async (req, res) => {
+      const query = z
+        .object({
+          limit: z.coerce.number().int().min(1).max(50).default(12),
+          cursor: z.string().max(2048).optional(),
+          search: z.string().max(160).optional(),
+          filter: z.enum(['all', 'mine', 'available', 'upcoming']).optional(),
+          descending: z.enum(['true', 'false']).optional(),
+        })
+        .strict()
+        .parse(req.query);
+      const page = await resourcePage(store, user(res), kind as Kind, {
+        ...query,
+        descending: query.descending === 'true',
+      });
+      res.locals.queryExamined = page.examined;
+      res.locals.queryMs = page.queryMs;
+      res.setHeader('Server-Timing', `query;dur=${page.queryMs}`);
+      res.json(page);
+    });
+  }
+  app.get('/api/snapshot', async (_req, res) => {
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Link', '</api/events>; rel="successor-version"');
+    res.json(await service.snapshot(user(res)));
+  });
   app.post('/api/events', async (req, res) =>
     res
       .status(201)

@@ -1,9 +1,11 @@
 import { freemem, totalmem } from 'node:os';
 import { createApp } from './app.js';
 import { allowedOrigins, readConfig } from './config.js';
-import { createStore } from './store.js';
+import { createStore, SqliteStore } from './store.js';
 const config = readConfig();
 const store = createStore(config);
+if (store instanceof SqliteStore)
+  store.startSessionCleanup(config.SESSION_CLEANUP_SECONDS);
 try {
   await store.ready();
 } catch (error) {
@@ -46,6 +48,18 @@ const server = createApp(config, store).listen(config.PORT, config.HOST, () =>
     }),
   ),
 );
+server.setTimeout(35000, (socket) => {
+  console.warn(
+    JSON.stringify({
+      level: 'warn',
+      category: 'RequestTimeout',
+      message: 'Connection idle timeout',
+    }),
+  );
+  socket.destroy();
+});
+server.requestTimeout = 45000;
+server.headersTimeout = 15000;
 server.on('error', (error: NodeJS.ErrnoException) => {
   console.error(
     JSON.stringify({
