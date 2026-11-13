@@ -29,6 +29,7 @@ import {
   Vote,
   X,
 } from 'lucide-react';
+import { RefreshGate } from './refresh';
 import { api, ApiError } from './api';
 import type { EventView, Registration, Snapshot, User } from '../shared/types';
 
@@ -66,9 +67,13 @@ function Brand() {
 function Login({
   onLogin,
   local,
+  deploymentLabel,
+  https,
 }: {
   onLogin: (user: User) => void;
   local: boolean;
+  deploymentLabel?: string;
+  https?: boolean;
 }) {
   const [register, setRegister] = useState(false);
   const [error, setError] = useState('');
@@ -127,12 +132,12 @@ function Login({
             </span>
           </div>
         </div>
-        <small>Cloud Computing Project · Midpoint Prototype</small>
+        <small>Cloud Computing Project · Coordination Hub</small>
       </section>
       <main className="login-panel">
         <span className="badge local">
           <span className="dot" />{' '}
-          {local ? 'Local development' : 'Cloud workspace'}
+          {deploymentLabel ?? (local ? 'Local development' : 'Cloud workspace')}
         </span>
         <h2>{register ? 'Join your workspace' : 'Welcome back'}</h2>
         <p className="muted">
@@ -199,8 +204,8 @@ function Login({
           <p>
             Organizer accounts are provisioned by the project team.{' '}
             {local
-              ? 'This prototype runs locally; no AWS resources are connected.'
-              : 'Your session is protected by HTTPS and backed by the shared database.'}
+              ? 'This application is configured for a local deployment.'
+              : `Your session uses ${https ? 'HTTPS' : 'HTTP'} and database-backed authentication.`}
           </p>
         </div>
       </main>
@@ -632,7 +637,33 @@ function Empty({ title, text }: { title: string; text: string }) {
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
-  const [local, setLocal] = useState(true);
+  const [deployment, setDeployment] = useState<'local' | 'ec2' | 'aws-multi'>(
+    'local',
+  );
+  const [https, setHttps] = useState(false);
+  const [database, setDatabase] = useState('Connecting…');
+  const local = deployment === 'local';
+  const deploymentLabel = {
+    local: 'Local development',
+    ec2: 'Single-instance EC2',
+    'aws-multi': 'Multi-instance AWS',
+  }[deployment];
+  const gate = useRef(new RefreshGate());
+  const mutating = useRef(false);
+  const failures = useRef(0);
+  const [backgroundError, setBackgroundError] = useState('');
+  const [pageLoading, setPageLoading] = useState(false);
+  const [cursor, setCursor] = useState<string | undefined>();
+  const [previousCursors, setPreviousCursors] = useState<
+    (string | undefined)[]
+  >([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [summary, setSummary] = useState<{
+    events: number;
+    confirmed: number;
+    waitlisted: number;
+    activePolls: number;
+  } | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -647,11 +678,22 @@ export default function App() {
     event: EventView;
     rows: Registration[];
   } | null>(null);
+  const identity = useRef<string | null>(null);
+  identity.current = user?.id ?? null;
+  const reloadRef = useRef<() => Promise<void>>(async () => {});
   const path = useLocation().pathname;
   const page = nav.find((n) => n.path === path);
   useEffect(() => {
-    void api<{ database: string }>('/health')
-      .then((result) => setLocal(result.database !== 'Amazon DynamoDB'))
+    void api<{
+      database: string;
+      deployment: 'local' | 'ec2' | 'aws-multi';
+      https: boolean;
+    }>('/health')
+      .then((result) => {
+        setDeployment(result.deployment);
+        setHttps(result.https);
+        setDatabase(result.database);
+      })
       .catch(() => {});
     api<User>('/auth/me')
       .then(setUser)
@@ -662,26 +704,131 @@ export default function App() {
       .finally(() => setChecking(false));
   }, []);
   const reload = useCallback(async () => {
+    if (!user) return;
+    const request = gate.current.begin();
+    setPageLoading(true);
+    const options = { signal: request.signal };
+    type Page<T> = { items: T[]; nextCursor: string | null };
+    const resource =
+      path === '/events'
+        ? 'events'
+        : path === '/polls'
+          ? 'polls'
+          : path === '/scheduling'
+            ? 'appointments'
+            : null;
+    const query = new URLSearchParams({ limit: '12' });
+    if (cursor) query.set('cursor', cursor);
+    if (path === '/events') {
+      query.set('search', search);
+      query.set('filter', filter);
+    }
     try {
-      setSnapshot(await api<Snapshot>('/snapshot'));
-      setError('');
+      const fresh: Snapshot = {
+        events: [],
+        polls: [],
+        slots: [],
+        activities: [],
+        database,
+      };
+      let next: string | null = null;
+      if (resource) {
+        const page = await api<Page<never>>(
+          `/${resource}?${query}`,
+          'GET',
+          undefined,
+          options,
+        );
+        if (resource === 'events') fresh.events = page.items;
+        else if (resource === 'polls') fresh.polls = page.items;
+        else fresh.slots = page.items;
+        next = page.nextCursor;
+      } else if (path === '/dashboard') {
+        const [counts, events, activity] = await Promise.all([
+          api<{
+            events: number;
+            confirmed: number;
+            waitlisted: number;
+            activePolls: number;
+          }>('/summary', 'GET', undefined, options),
+          api<Page<EventView>>(
+            '/events?limit=12&filter=upcoming',
+            'GET',
+            undefined,
+            options,
+          ),
+          api<Page<Snapshot['activities'][number]>>(
+            '/activities?limit=12&descending=true',
+            'GET',
+            undefined,
+            options,
+          ),
+        ]);
+        if (!request.current()) return;
+        setSummary(counts);
+        fresh.events = events.items;
+        fresh.activities = activity.items;
+      }
+      if (!request.current()) return;
+      setSnapshot(fresh);
+      setNextCursor(next);
+      setBackgroundError('');
+      failures.current = 0;
     } catch (e) {
+      if (
+        !request.current() ||
+        (e instanceof DOMException && e.name === 'AbortError')
+      )
+        return;
+      failures.current++;
       if (e instanceof ApiError && e.status === 401) {
+        gate.current.cancel();
         setUser(null);
         setSnapshot(null);
+        setError(errorMessage(e));
+        return;
       }
-      setError(errorMessage(e));
+      setBackgroundError(errorMessage(e));
+    } finally {
+      if (request.current()) setPageLoading(false);
     }
-  }, []);
+  }, [user, path, cursor, search, filter, database]);
+  useEffect(() => {
+    reloadRef.current = reload;
+  }, [reload]);
   useEffect(() => {
     if (!user) return;
+    let stopped = false;
+    const activeGate = gate.current;
     void reload();
-    const interval = setInterval(() => void reload(), 15_000);
-    return () => clearInterval(interval);
+    let timer: ReturnType<typeof setTimeout>;
+    const tick = async () => {
+      if (!document.hidden && !mutating.current) await reload();
+      if (stopped) return;
+      timer = setTimeout(
+        tick,
+        Math.min(120000, 15000 * 2 ** Math.min(failures.current, 3)),
+      );
+    };
+    timer = setTimeout(tick, 15000);
+    const visible = () => {
+      if (!document.hidden && !mutating.current) void reload();
+    };
+    document.addEventListener('visibilitychange', visible);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', visible);
+      activeGate.cancel();
+    };
   }, [user, reload]);
   useEffect(() => {
     setSearch('');
     setFilter('all');
+    setCursor(undefined);
+    setPreviousCursors([]);
+    setNextCursor(null);
+    setSnapshot(null);
   }, [path]);
   async function act(
     endpoint: string,
@@ -689,11 +836,16 @@ export default function App() {
     message: string,
     body?: unknown,
   ) {
+    if (mutating.current) return;
+    const actor = user?.id;
+    mutating.current = true;
+    gate.current.cancel();
     setBusy(true);
     setError('');
     setNotice('');
     try {
       const response = await api<unknown>(endpoint, method, body);
+      if (identity.current !== actor) return;
       if (
         method === 'POST' &&
         /\/events\/[^/]+\/registrations$/.test(endpoint)
@@ -707,22 +859,27 @@ export default function App() {
       } else {
         setNotice(message);
       }
-      await reload();
+      await reloadRef.current();
     } catch (e) {
-      setError(errorMessage(e));
+      if (identity.current === actor) setError(errorMessage(e));
     } finally {
+      mutating.current = false;
       setBusy(false);
     }
   }
   async function logout() {
+    const actor = user?.id;
+    gate.current.cancel();
+    mutating.current = true;
     setBusy(true);
     try {
       await api('/auth/logout', 'POST');
       setUser(null);
       setSnapshot(null);
     } catch (e) {
-      setError(errorMessage(e));
+      if (identity.current === actor) setError(errorMessage(e));
     } finally {
+      mutating.current = false;
       setBusy(false);
     }
   }
@@ -750,7 +907,13 @@ export default function App() {
       <>
         <Login
           local={local}
+          deploymentLabel={deploymentLabel}
+          https={https}
           onLogin={(u) => {
+            gate.current.cancel();
+            setSnapshot(null);
+            setCursor(undefined);
+            setPreviousCursors([]);
             setUser(u);
             setError('');
           }}
@@ -767,8 +930,8 @@ export default function App() {
   const polls = snapshot?.polls ?? [];
   const slots = snapshot?.slots ?? [];
   const upcoming = events.filter((e) => Date.parse(e.startsAt) > Date.now());
-  const confirmed = events.reduce((count, e) => count + e.confirmedCount, 0);
-  const waiting = events.reduce((count, e) => count + e.waitlistCount, 0);
+  const confirmed = summary?.confirmed ?? 0;
+  const waiting = summary?.waitlisted ?? 0;
   const visibleEvents = events.filter(
     (e) =>
       `${e.title} ${e.description} ${e.location}`
@@ -819,11 +982,11 @@ export default function App() {
         <div className="sidebar-bottom">
           <div className="local-note">
             <span className="dot" />
-            <strong>{local ? 'Local prototype' : 'Cloud workspace'}</strong>
+            <strong>{deploymentLabel}</strong>
             <p>
               {snapshot?.database ?? 'Connecting to database…'}
               <br />
-              {local ? 'AWS deployment is disabled' : 'Shared cloud database'}
+              {local ? 'Local deployment' : deploymentLabel}
             </p>
           </div>
           <div className="profile">
@@ -876,7 +1039,8 @@ export default function App() {
           <div className="topbar-right">
             <span className="badge local">
               <span className="dot" />
-              {local ? 'Local development' : 'Cloud workspace'}
+              {deploymentLabel ??
+                (local ? 'Local development' : 'Cloud workspace')}
             </span>
             <button
               className="icon-button"
@@ -965,6 +1129,14 @@ export default function App() {
               </button>
             </div>
           )}
+          {backgroundError && (
+            <p role="status" className="form-error">
+              Refresh failed: {backgroundError}{' '}
+              <button className="text-button" onClick={() => void reload()}>
+                Try again
+              </button>
+            </p>
+          )}
           {!snapshot ? (
             <div className="panel page-loading" role="status">
               Loading live workspace data…
@@ -1016,14 +1188,14 @@ export default function App() {
                   >
                     {[
                       {
-                        label: 'Upcoming events',
-                        value: upcoming.length,
+                        label: 'Workspace events',
+                        value: summary?.events ?? 0,
                         caption: 'Ready to bring people together',
                         Icon: CalendarDays,
                       },
                       {
                         label: 'Active polls',
-                        value: polls.filter((p) => !p.closed).length,
+                        value: summary?.activePolls ?? 0,
                         caption: 'Decisions in the making',
                         Icon: BarChart3,
                       },
@@ -1052,9 +1224,9 @@ export default function App() {
                   </section>
                   <div className="section-heading">
                     <div>
-                      <h2>Coming up next</h2>
+                      <h2>Explore upcoming events</h2>
                       <p className="muted">
-                        A few things to put on your calendar.
+                        Browse events and find your next gathering.
                       </p>
                     </div>
                     <NavLink className="text-link" to="/events">
@@ -1108,7 +1280,7 @@ export default function App() {
                         <div>
                           <strong>Every voice counts.</strong>
                           <p>
-                            {polls.filter((p) => !p.closed).length} active polls
+                            {summary?.activePolls ?? 0} published active polls
                             are ready for your input.
                           </p>
                         </div>
@@ -1160,7 +1332,11 @@ export default function App() {
                         <button
                           key={tab.key}
                           className={filter === tab.key ? 'active' : ''}
-                          onClick={() => setFilter(tab.key)}
+                          onClick={() => {
+                            setFilter(tab.key);
+                            setCursor(undefined);
+                            setPreviousCursors([]);
+                          }}
                           aria-pressed={filter === tab.key}
                         >
                           {tab.label}
@@ -1174,7 +1350,11 @@ export default function App() {
                         type="search"
                         placeholder="Search events…"
                         value={search}
-                        onChange={(e) => setSearch(e.target.value)}
+                        onChange={(e) => {
+                          setSearch(e.target.value);
+                          setCursor(undefined);
+                          setPreviousCursors([]);
+                        }}
                       />
                     </label>
                   </div>
@@ -1307,8 +1487,8 @@ export default function App() {
                       <p>
                         {snapshot.database}.{' '}
                         {local
-                          ? 'Local development only. AWS has not been connected or deployed.'
-                          : 'Using the shared Amazon DynamoDB deployment.'}
+                          ? 'Local deployment; database connectivity is configured separately.'
+                          : `Deployment: ${deploymentLabel}. Database: ${database}.`}
                       </p>
                     </div>
                     <p className="muted">
@@ -1320,6 +1500,31 @@ export default function App() {
                 </div>
               )}
             </>
+          )}
+          {['/events', '/polls', '/scheduling'].includes(path) && (
+            <nav aria-label="Resource pages" className="toolbar">
+              <button
+                className="button secondary"
+                disabled={!previousCursors.length || busy || pageLoading}
+                onClick={() => {
+                  setCursor(previousCursors.at(-1));
+                  setPreviousCursors((p) => p.slice(0, -1));
+                }}
+              >
+                Previous
+              </button>
+              <span className="muted">Page {previousCursors.length + 1}</span>
+              <button
+                className="button secondary"
+                disabled={!nextCursor || busy || pageLoading}
+                onClick={() => {
+                  setPreviousCursors((p) => [...p, cursor]);
+                  setCursor(nextCursor!);
+                }}
+              >
+                Next
+              </button>
+            </nav>
           )}
           <footer className="footer">
             <span>Cloud Coordination Hub</span>

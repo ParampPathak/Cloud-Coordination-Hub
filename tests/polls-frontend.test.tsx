@@ -92,7 +92,9 @@ describe('Polling interface', () => {
   it('preserves option-capacity pairs and settings across type changes and removal', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+      .mockResolvedValue(
+        new Response('{}', { headers: { 'Content-Type': 'application/json' } }),
+      );
     const saved = vi.fn();
     render(<PollForm onSaved={saved} />);
     fireEvent.change(screen.getByLabelText('Question'), {
@@ -147,7 +149,9 @@ describe('Polling interface', () => {
   it('keeps anonymous and publishing settings when changing poll type', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+      .mockResolvedValue(
+        new Response('{}', { headers: { 'Content-Type': 'application/json' } }),
+      );
     render(<PollForm onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Question'), {
       target: { value: 'When?' },
@@ -187,7 +191,9 @@ describe('Polling interface', () => {
   it('validates signup capacities and preserves optional unlimited multiple-choice topics', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+      .mockResolvedValue(
+        new Response('{}', { headers: { 'Content-Type': 'application/json' } }),
+      );
     render(<PollForm onSaved={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Question'), {
       target: { value: 'Topic?' },
@@ -334,7 +340,9 @@ describe('Polling interface', () => {
   it('creates a simple anonymous poll with organizer voting disabled', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue({ ok: true, json: async () => ({}) } as Response);
+      .mockResolvedValue(
+        new Response('{}', { headers: { 'Content-Type': 'application/json' } }),
+      );
     const saved = vi.fn();
     render(<PollForm onSaved={saved} />);
     fireEvent.change(screen.getByLabelText('Question'), {

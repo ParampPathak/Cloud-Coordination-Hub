@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { downloadAppointment } from './calendar';
+import { useState, useRef, useEffect, type FormEvent } from 'react';
 import type { ScheduleInput, Slot, User } from '../shared/types';
 import { api } from './api';
 
@@ -301,7 +302,47 @@ export function SlotCard({
     capacity = slot.capacity ?? 1;
   const past = Date.parse(slot.startsAt) <= Date.now();
   const full = count >= capacity;
-  const alternatives = slots.filter(
+  const [extraSlots, setExtraSlots] = useState<Slot[]>([]);
+  const [destinationCursor, setDestinationCursor] = useState<
+    string | null | undefined
+  >();
+  const [destinationBusy, setDestinationBusy] = useState(false);
+  const [destinationError, setDestinationError] = useState('');
+  const destinationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => destinationRequest.current?.abort(), []);
+  async function loadDestinations() {
+    if (destinationBusy || destinationCursor === null) return;
+    setDestinationBusy(true);
+    setDestinationError('');
+    const controller = new AbortController();
+    destinationRequest.current = controller;
+    try {
+      const query = new URLSearchParams({ limit: '12', filter: 'available' });
+      if (destinationCursor) query.set('cursor', destinationCursor);
+      const page = await api<{ items: Slot[]; nextCursor: string | null }>(
+        `/appointments?${query}`,
+        'GET',
+        undefined,
+        { signal: controller.signal },
+      );
+      setExtraSlots((current) => [
+        ...new Map([...current, ...page.items].map((s) => [s.id, s])).values(),
+      ]);
+      setDestinationCursor(page.nextCursor);
+    } catch (error) {
+      if (!controller.signal.aborted)
+        setDestinationError(
+          error instanceof Error
+            ? error.message
+            : 'Could not load appointments.',
+        );
+    } finally {
+      setDestinationBusy(false);
+    }
+  }
+  const alternatives = [
+    ...new Map([...extraSlots, ...slots].map((s) => [s.id, s])).values(),
+  ].filter(
     (s) =>
       s.id !== slot.id &&
       !s.blocked &&
@@ -378,6 +419,34 @@ export function SlotCard({
                   : 'Reserve slot'}
           </button>
         </div>
+      )}
+      {mine && (
+        <button
+          className="button secondary"
+          onClick={() => downloadAppointment(slot)}
+        >
+          Download calendar invitation
+        </button>
+      )}
+      {mine && !past && (
+        <>
+          <button
+            className="text-button"
+            disabled={destinationBusy || destinationCursor === null}
+            onClick={() => void loadDestinations()}
+          >
+            {destinationBusy
+              ? 'Loading appointments…'
+              : destinationCursor === null
+                ? 'All appointments loaded'
+                : 'Find more available appointments'}
+          </button>
+          {destinationError && (
+            <p role="alert" className="form-error">
+              {destinationError}
+            </p>
+          )}
+        </>
       )}
       {mine && !past && (
         <div className="form-row">
