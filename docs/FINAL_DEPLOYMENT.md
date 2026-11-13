@@ -77,3 +77,13 @@ Application aggregates serialize popular event/poll/group writes; snapshots quer
 ## Cleanup
 
 Verify backups and shared-resource ownership first. With explicit cleanup authorization, delete the reviewed stack. Retained DynamoDB/audit data continues incurring charges until separately handled. Check ownership/recovery before removing builders, AMIs, snapshots or test resources. End Lab is not a verified backup procedure.
+
+## November 13 upgrade checklist
+
+Retain the two-AZ HTTPS ALB → private EC2 ASG (2/2/3) → shared DynamoDB design. This update adds no service; it adds an explicit deployment mode, a table-level UpdateItem permission for transactional summary counters, and log-derived page-query/timeout metrics. No AWS resources were created, changed or failure-tested. Current Sandbox budget/session, certificate, quotas, IAM and real target health were not verified; historical console observations above are not a current preflight. No AWS CLI was available in this execution environment.
+
+Before rollout: back up storage; stop **all** old writers; preview/rebuild a populated DynamoDB table's summary using `scripts/rebuild-summary.ts` and the explicit apply opt-in; update the existing instance-role policy to include table-scoped UpdateItem; build/bake the new release and confirm `DEPLOYMENT_MODE=aws-multi`. Readiness fails for an unmigrated populated table. New empty tables initialize automatically. EC2 SQLite uses `DEPLOYMENT_MODE=ec2` from its env example and periodic session cleanup. Do not seed demo accounts into AWS or include local test artifacts in an AMI.
+
+Deploy only after the existing authorization/cost review. Validate the extra CloudWatch metric filters and their ingestion cost. The dashboard adds query candidate rows, query duration and connection-idle timeout metrics; these are not total DynamoDB consumed-capacity metrics. End-to-end browser timeouts may not reach the server, so a server timeout counter cannot count every client timeout. Verify actual logs before claiming these widgets work.
+
+Do not infer t3.micro sizing from local results. Measure memory, CPU credits, p95/p99, request/transaction conflicts and managed DynamoDB capacity live; retain the existing permitted type/capacity options pending that evidence. No live high-availability, ACM/HTTPS, ALB/ASG failover, or CloudWatch delivery result is claimed. Optional email reminders/reset remain unavailable without a real configured delivery provider.

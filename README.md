@@ -231,3 +231,17 @@ Remaining live work: validate budget/session duration, quotas, profile/certifica
 ## Contributors and license
 
 University Cloud Computing project team (three contributors; add agreed public display names through team review). No student IDs, private email addresses or AWS credentials should be published. See [LICENSE](LICENSE).
+
+## November 13 reliability and query update
+
+The active UI now uses bounded resource pages and transactional summary counts instead of repeatedly downloading the workspace. See [optimization verification](docs/optimization-verification.md) for current measurements, test evidence, migration prerequisites and limitations. Historical November 9 results above remain historical, not new measurements.
+
+Set `DEPLOYMENT_MODE=local`, `ec2`, or `aws-multi` independently of database technology. Multi-instance AWS requires shared Amazon DynamoDB; a local DynamoDB endpoint is rejected for that mode. EC2 examples and the multi-AZ template set their respective deployment modes explicitly. `/api/health` exposes only the mode, database label and configured HTTPS status.
+
+SQLite expired-session maintenance runs once at startup and every `SESSION_CLEANUP_SECONDS` (default 900, minimum 60); shutdown clears its timer. DynamoDB still uses TTL and authentication always checks expiry.
+
+**Upgrade prerequisite:** stop all DynamoDB writers and back up the table before rebuilding counters. Preview with `npx tsx scripts/rebuild-summary.ts`; after independently confirming writers are stopped, set `ALLOW_SUMMARY_REBUILD=true` and run it with `--apply`. Remove the environment variable afterward. Existing uninitialized tables fail readiness rather than publishing invented totals. New empty tables initialize automatically. SQLite builds its summary once from existing records and maintains it transactionally. Never mix old writers with this release.
+
+Optional appointment downloads are `.ics` snapshots, not email invitations or reminders. Delete an old calendar entry after cancellation/rescheduling and download the replacement. No email delivery or password-reset service is claimed.
+
+Additional commands: `npx tsx scripts/query-benchmark.ts`, `node scripts/render-architecture.mjs`, and `HUB_LOAD_MODE=legacy` / `HUB_LOAD_MODE=paginated` with `test:load` (PowerShell: set `$env:HUB_LOAD_MODE`). Loads accept only isolated local databases, not production targets.

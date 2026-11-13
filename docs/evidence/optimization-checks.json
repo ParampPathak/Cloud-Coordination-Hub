@@ -1,0 +1,25 @@
+{
+  "date": "2026-11-13",
+  "baselineCommit": "2733fd9ff3d21d30445dc239e6606e561583db1f",
+  "regularTests": {
+    "passed": 98,
+    "skipped": 5,
+    "skippedReason": "Four DynamoDB-only cases plus legacy-table migration case selected in the separate integration command."
+  },
+  "dynamodbSelectedTests": {
+    "passed": 25,
+    "note": "Overlaps shared scenarios from the regular suite; do not add the two counts as unique tests."
+  },
+  "lint": "passed",
+  "typecheck": "passed",
+  "productionBuild": "passed",
+  "formatCheck": "passed",
+  "browserSmoke": "passed",
+  "productionRestartSmoke": "passed",
+  "offlineInfrastructureGuard": "passed",
+  "cfnLintBothTemplates": "passed",
+  "localDynamoDBVersion": "1.25.1",
+  "localDynamoDBDownloadSha256": "A3CB28740EA3875A7B0E14CFB13CED686F36CE27BC00F13F8A7D72DDEEE6C9B1",
+  "liveAwsVerified": false,
+  "notes": "Local desktop results. GitHub Actions results are checked after the final push and reported separately. No AWS CLI or verified current Sandbox preflight was available."
+}

@@ -49,3 +49,7 @@ Existing scrypt/hashed revocable sessions, exact-origin mutation checks, secure 
 No user data was deleted/migrated or cloud resources created. Migration tests cover consistent export, refusal to replace backups, read-only comparison, idempotent conditional import and preserved target conflicts. Docker execution, release AMI boot, Academy quotas/budget/session, least-privilege profile, public HTTPS URL, live CloudWatch events/datapoints, actual ALB routing/failure and ASG replacement remain unverified. A browser console was active, but no reliable Sandbox preflight was completed; local-only work was the selected scope.
 
 Remote GitHub Actions results must be checked for the pushed main commit; local passes do not establish remote CI success. The completion response identifies the observed run and final commit. No automatic production deployment was added.
+
+## November 13 follow-up
+
+The measurements and test counts above remain historical. The [optimization and reliability verification](optimization-verification.md) records the current 98-test regular suite, separately selected 25-test DynamoDB integration suite, bounded-query benchmark and new 50-user runs, including an extended run. It also records migration requirements and the still-unverified AWS deployment status. Numerical sources and concise [poster notes](poster-update-notes.md) are provided without editing the academic poster or slides.

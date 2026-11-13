@@ -31,3 +31,15 @@ Request logs record route templates rather than arbitrary paths/query values, wi
 Compatible lockfile security updates removed the four reported production advisories; `npm audit --omit=dev` reports zero vulnerabilities as of November 9, 2026. Full audit still reports ten moderate development-tool dependency findings through minimatch (the available audit recommendation changes the ESLint major version). No forced tooling downgrade or incompatible override was applied. This is an audit result, not a claim of a penetration test.
 
 Database backups contain password hashes and personal data: keep them private/encrypted and out of source/AMIs. Migration defaults to comparison and refuses existing differing records; maintain source/backup until verification. AWS uses an existing permitted profile and table-scoped gateway policy; no credentials were committed and no IAM resources created. Actual Academy permissions remain to be checked.
+
+## November 13 changes
+
+Read cursors bind the browsing context and never bypass server projections/ownership checks. Poll drafts remain owner/admin-only and appointment reasons remain private. Anonymous participation is redacted in activity pages. Summary aggregates expose no draft counts, identities, tokens or booking reasons.
+
+Refreshes are cancelled and sequenced on navigation, identity changes, logout and unmount. POST/PUT/DELETE calls are not retried or cancelled merely because navigation occurred. An unknown mutation outcome requires a read before another submission. Network errors, proxy HTML and stack traces are not shown raw.
+
+The campus-IP auth budget is now 400 mutations/15 minutes/process, with an additional 20 failed login attempts/account/15 minutes/process using a hashed normalized email key. Authenticated API quotas remain user-based. This supports 50 separate classmates on one NAT without removing abuse protections. Limits remain process-local, not a distributed quota; two instances can multiply the effective allowance. Scrypt, expiry checks, hashed/revocable sessions, HttpOnly/SameSite cookies, HTTPS settings and origin validation are unchanged.
+
+Periodic SQLite session removal supplements authentication-time expiry checks; it does not replace them. Logs include route templates and numeric page work/durations, never cursors, search strings, account keys, credentials or private payloads. CloudWatch query/timeout metric filters require working log delivery and remain unverified live. The summary table/record must be included in rollback/upgrade planning; counter rebuild is an administrator-only maintenance command, not a web route.
+
+Calendar exports omit meeting reasons and identity lists; they are local snapshots and do not send mail. Email reminders and password recovery remain deferred because no verified delivery provider is configured.

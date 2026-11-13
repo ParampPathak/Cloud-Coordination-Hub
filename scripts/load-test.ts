@@ -20,6 +20,7 @@ import { HubService } from '../backend/src/service.js';
 import { SchedulingService, bookings } from '../backend/src/scheduling.js';
 import type { HubEvent, Poll, Slot, Snapshot } from '../shared/types.js';
 
+const browseMode = process.env.HUB_LOAD_MODE ?? 'paginated';
 const driver = process.argv.includes('--dynamodb') ? 'dynamodb' : 'sqlite';
 const rounds = Number(process.env.HUB_LOAD_ROUNDS ?? 12);
 assert(
@@ -85,6 +86,9 @@ const metrics: {
   status: number;
   ms: number;
   expected: boolean;
+  responseBytes: number;
+  queryExamined?: number;
+  queryMs?: number;
 }[] = [];
 const targets = new Map<number, number>();
 let cursor = 0,
@@ -194,6 +198,7 @@ async function call(
   const start = performance.now();
   let status = 0;
   let data: unknown;
+  let responseBytes = 0;
   try {
     const response = await fetch(origin + path, {
       method,
@@ -207,6 +212,7 @@ async function call(
     });
     status = response.status;
     const raw = await response.text();
+    responseBytes = Buffer.byteLength(raw);
     try {
       data = JSON.parse(raw);
     } catch {
@@ -225,6 +231,15 @@ async function call(
       status,
       ms: performance.now() - start,
       expected: conflicts && status === 409,
+      responseBytes,
+      queryExamined:
+        typeof data === 'object' && data !== null
+          ? (data as { examined?: number }).examined
+          : undefined,
+      queryMs:
+        typeof data === 'object' && data !== null
+          ? (data as { queryMs?: number }).queryMs
+          : undefined,
     });
   }
 }
@@ -320,7 +335,25 @@ try {
       cookies[i] = signed.cookie;
       const cookie = signed.cookie;
       for (let round = 0; round < rounds; round++) {
-        check(await call('/api/snapshot', 'GET', cookie));
+        if (browseMode === 'legacy')
+          check(await call('/api/snapshot', 'GET', cookie));
+        else {
+          for (const resource of [
+            'summary',
+            'events?limit=12',
+            'polls?limit=12',
+            'appointments?limit=12',
+          ])
+            check(await call(`/api/${resource}`, 'GET', cookie));
+          if (round % 3 === 0)
+            check(
+              await call(
+                '/api/activities?limit=12&descending=true',
+                'GET',
+                cookie,
+              ),
+            );
+        }
         check(
           await call(
             `/api/events/${event.id}/registrations`,
@@ -362,9 +395,42 @@ try {
             option: i % 2,
           }),
         );
-        check(await call('/api/snapshot', 'GET', cookie));
+        if (browseMode === 'legacy')
+          check(await call('/api/snapshot', 'GET', cookie));
+        else {
+          for (const resource of [
+            'summary',
+            'events?limit=12',
+            'polls?limit=12',
+            'appointments?limit=12',
+          ])
+            check(await call(`/api/${resource}`, 'GET', cookie));
+          if (round % 3 === 0)
+            check(
+              await call(
+                '/api/activities?limit=12&descending=true',
+                'GET',
+                cookie,
+              ),
+            );
+        }
         // At this barrier all 50 active users retain their registrations for correctness checks.
         await barrier(round);
+        if (browseMode !== 'legacy' && booked.status === 200) {
+          const move = await call(
+            `/api/slots/${slots[i % slots.length]}/reschedule`,
+            'POST',
+            cookie,
+            {
+              slotId: slots[(i + 1) % slots.length],
+              reason: 'Load test failed move',
+            },
+            true,
+          );
+          check(move, 409);
+        }
+        // Keep destinations occupied until every attempted reschedule has completed.
+        if (browseMode !== 'legacy') await barrier(round + rounds);
         if (booked.status === 200)
           check(
             await call(
@@ -428,6 +494,9 @@ try {
     bookings((await store.get<Slot>('slot', slots[0]))!.data).length,
     0,
   );
+  if (browseMode !== 'legacy')
+    for (const cookie of cookies)
+      check(await call('/api/auth/logout', 'POST', cookie));
   const latency = metrics.filter(
     (m) => m.path.startsWith('/api/') && !m.expected,
   );
@@ -447,10 +516,22 @@ try {
       logicalCpus: cpus().length,
       totalMemoryGiB: totalmem() / 1073741824,
     },
+    browseMode,
     users: 50,
     rounds,
     workloadDurationSeconds: workloadMs / 1000,
     requests: metrics.length,
+    totalResponseBytes: metrics.reduce((n, m) => n + m.responseBytes, 0),
+    candidateRowsExamined: metrics.reduce(
+      (n, m) => n + (m.queryExamined ?? 0),
+      0,
+    ),
+    pageQueryP95Ms: percentile(
+      metrics.filter((m) => m.queryMs !== undefined).map((m) => m.queryMs!),
+      0.95,
+    ),
+    databaseReadMeasurement:
+      'Candidate rows from page diagnostics only; excludes auth, canonical mutation reads, and bounded activity ownership lookups. Not total database reads.',
     expectedCapacityConflicts: metrics.filter((m) => m.expected).length,
     unexpectedFailures: unexpected.length,
     successRateExcludingExpectedConflicts:
@@ -465,6 +546,12 @@ try {
       latency.map((m) => m.ms),
       0.95,
     ),
+    apiP99Ms: percentile(
+      latency.map((m) => m.ms),
+      0.99,
+    ),
+    apiMaxMs: Math.max(...latency.map((m) => m.ms)),
+    throughputRequestsPerSecond: metrics.length / (workloadMs / 1000),
     loginP95Ms: percentile(
       metrics.filter((m) => m.path === '/api/auth/login').map((m) => m.ms),
       0.95,
@@ -483,6 +570,7 @@ try {
       appointmentWinnersPerRound: 8,
       duplicateBookings: 0,
       overCapacity: 0,
+      summaryCountersConsistent: true,
     },
     localFailureTest: {
       successfulProbes,
@@ -497,7 +585,7 @@ try {
   };
   mkdirSync('artifacts', { recursive: true });
   writeFileSync(
-    `artifacts/load-${driver}.json`,
+    `artifacts/load-${driver}-${browseMode}.json`,
     JSON.stringify(report, null, 2) + '\n',
   );
   console.log(
@@ -565,6 +653,11 @@ async function verifyRound() {
     assert.equal(bookings(s).length, 1);
   const poll = (await store.list<Poll>('poll'))[0];
   assert.equal(Object.keys(poll.votes).length, 50);
+  assert.deepEqual(
+    await store.summary(),
+    { events: 2, confirmed: 46, waitlisted: 54, activePolls: 1 },
+    'Summary counters drifted from canonical records.',
+  );
 }
 // Function declaration permits the workload to start before these barriers are first used.
 function barrier(round: number): Promise<void> {

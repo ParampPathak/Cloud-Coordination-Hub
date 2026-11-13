@@ -1,0 +1,45 @@
+{
+  "date": "2026-11-13T20:57:48.145Z",
+  "samples": [
+    {
+      "recordsPerKind": 100,
+      "mode": "legacy",
+      "samples": 30,
+      "responseBytes": 30766,
+      "baseEntityRowsRead": 200,
+      "p50Ms": 0.24549999999999272,
+      "p95Ms": 0.3783999999999992,
+      "notes": "SQLite in-memory service benchmark, includes bounded activity ownership lookups. Not HTTP, DynamoDB or AWS latency."
+    },
+    {
+      "recordsPerKind": 100,
+      "mode": "paginated",
+      "samples": 30,
+      "responseBytes": 4084,
+      "baseEntityRowsRead": 13,
+      "p50Ms": 0.061700000000001864,
+      "p95Ms": 0.12119999999998754,
+      "notes": "SQLite in-memory service benchmark, includes bounded activity ownership lookups. Not HTTP, DynamoDB or AWS latency."
+    },
+    {
+      "recordsPerKind": 1000,
+      "mode": "legacy",
+      "samples": 30,
+      "responseBytes": 307966,
+      "baseEntityRowsRead": 2000,
+      "p50Ms": 2.231999999999971,
+      "p95Ms": 4.123999999999967,
+      "notes": "SQLite in-memory service benchmark, includes bounded activity ownership lookups. Not HTTP, DynamoDB or AWS latency."
+    },
+    {
+      "recordsPerKind": 1000,
+      "mode": "paginated",
+      "samples": 30,
+      "responseBytes": 4097,
+      "baseEntityRowsRead": 13,
+      "p50Ms": 0.05389999999999873,
+      "p95Ms": 0.08029999999996562,
+      "notes": "SQLite in-memory service benchmark, includes bounded activity ownership lookups. Not HTTP, DynamoDB or AWS latency."
+    }
+  ]
+}
