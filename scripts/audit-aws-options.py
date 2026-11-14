@@ -1,6 +1,7 @@
 """Read-only AWS options audit: describes/simulations and EC2 DryRun only."""
 import argparse
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -53,6 +54,7 @@ def policy(arn):
 
 def simulate(principal, actions, resource, context=None):
     def run():
+        time.sleep(0.55)  # Pace read-only IAM simulations to avoid account throttling.
         result = iam.simulate_principal_policy(PolicySourceArn=principal,
             ActionNames=actions, ResourceArns=[resource], ContextEntries=context or [])
         return [{k: x[k] for k in ['EvalActionName','EvalResourceName','EvalDecision',
@@ -174,7 +176,11 @@ def pricing():
         'postgres_gp2': ('AmazonRDS', {'databaseEngine':'PostgreSQL','deploymentOption':'Single-AZ','volumeType':'General Purpose','location':'US East (N. Virginia)'})
     }
     rows={}
+    pricing_denied=False
     for name,(service,filters) in queries.items():
+        if pricing_denied:
+            rows[name]={"notAttempted":"Pricing access denied; do not repeat the denied API."}
+            continue
         def query():
             result=client('pricing').get_products(ServiceCode=service,FormatVersion='aws_v1',
                 Filters=[{'Type':'TERM_MATCH','Field':k,'Value':v} for k,v in filters.items()],MaxResults=50)
@@ -186,6 +192,7 @@ def pricing():
                         prices.append({'unit':d['unit'],'usd':d['pricePerUnit'].get('USD'),'description':d['description']})
             return {'prices':prices,'morePages':bool(result.get('NextToken'))}
         rows[name]=safe(query)
+        pricing_denied=isinstance(rows[name],dict) and rows[name].get("error") in ["AccessDenied", "AccessDeniedException"]
     return rows
 record('pricing', pricing)
 print(json.dumps({'status':'saved','file':args.output,'roleCount':len(out.get('roles',[]))}),flush=True)
