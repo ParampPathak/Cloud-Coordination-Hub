@@ -423,7 +423,7 @@
           }
         ],
         "BackupRetentionPeriod": 1,
-        "DeletionProtection": true,
+        "DeletionProtection": false,
         "AutoMinorVersionUpgrade": true,
         "EnableIAMDatabaseAuthentication": false,
         "CopyTagsToSnapshot": true,
@@ -910,6 +910,11 @@
     "DistributionId": {
       "Value": {
         "Ref": "Distribution"
+      }
+    },
+    "DatabaseIdentifier": {
+      "Value": {
+        "Ref": "Database"
       }
     }
   }

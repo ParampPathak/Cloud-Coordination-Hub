@@ -2,6 +2,10 @@
 
 Prepared November 13, 2026 (America/Chicago). **Application/storage implementation and local verification are prepared; AWS infrastructure is not deployed.** No billable resources, IAM changes, production data edits or presentation edits were performed.
 
+## Deployment authorization update
+
+The user subsequently authorized Plan B deployment within the discussed $3 three-hour reserve and explicitly approved disabling deletion protection **only for the new demo database** to remove the administrator cleanup dependency. Encryption, private networking, authentication and snapshot-on-deletion remain enabled. No existing database/data is deleted by this template change. Earlier protected-database discussion below records the preparation history and is superseded for this new DB. Infrastructure is not considered deployed until actual stack/resource and website verification.
+
 ## Migration scope and implementation
 
 The existing application stores versioned JSON aggregates through Store, rather than embedding SQL in feature handlers. Therefore the migration is a new storage adapter and operational path, not a rewrite of registration/booking rules. The SQLite and DynamoDB adapters and existing deployment templates are preserved. SQLite remains the local default and the Plan C feature fallback.

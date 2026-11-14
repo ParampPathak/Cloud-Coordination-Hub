@@ -11,7 +11,7 @@ assert(
 assert.equal(r.Database.Properties.MultiAZ, false);
 assert.equal(r.Database.Properties.PubliclyAccessible, false);
 assert.equal(r.Database.Properties.StorageEncrypted, true);
-assert.equal(r.Database.Properties.DeletionProtection, true);
+assert.equal(r.Database.Properties.DeletionProtection, false);
 assert.equal(r.Database.DeletionPolicy, 'Snapshot');
 assert.equal(r.DatabaseParameters.Properties.Parameters['rds.force_ssl'], '1');
 assert.equal(r.LoadBalancer.Properties.Scheme, 'internal');

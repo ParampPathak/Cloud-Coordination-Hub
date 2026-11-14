@@ -2,6 +2,10 @@
 
 Status: Plan A remains blocked; Plans B/C have permission-supported alternatives awaiting implementation and deployment approval. No final deployment is running in the inspected account. Region: us-east-1. Application release: 71fa096545f147c6ad5a7fdf1414163192c731da. The lab was started with explicit user approval and was left running; no End Lab action was performed.
 
+## Current deployment authorization
+
+The user now requests actual Plan B deployment and explicitly approved DeletionProtection=false only for the new empty demonstration DB, superseding the earlier keep-protection choice. Retain encryption, private networking, authentication and snapshot-on-deletion. Do not request that same authorization again. The prior administrator-cleanup prerequisite no longer applies to this new DB. Actual deployment/verification remains pending; respect the discussed $3 three-hour reserve and do not claim simulations are deployment.
+
 ## Plan B implementation update
 
 The user selected Plan B preparation only. PostgreSQL storage, local concurrency/TLS verification and a separate CloudFormation/bootstrap path are prepared; no AWS deployment was authorized or executed. Read [the preparation runbook](plan-b-preparation.md) before any new provisioning. The old 71fa096 software archive lacks PostgreSQL and is only a preserved fallback artifact. RDS ModifyDBInstance simulation is explicitly denied, so deletion-protection/cleanup must be resolved before spending. The user explicitly chose to keep deletion protection enabled and arrange administrator-assisted cleanup. The protected template has not been weakened; do not ask again to disable it.
