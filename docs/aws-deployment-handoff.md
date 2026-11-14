@@ -31,3 +31,5 @@ Verify the final architecture and both roles before events/waitlists, office hou
 - Feature screenshots, manifest updates and final evidence.
 
 Do not claim completion, final-stack availability, working demonstration credentials, measured AWS capacity or successful failover until those results are observed.
+
+The role-creation blocker is now confirmed by actual requests, not simulations alone. Both the user-approved SDK attempt and the subsequently requested manual IAM Console attempt failed at iam:CreateRole. The Console stated that no identity-based policy allows that action. Stop retrying with the same identity; resume after an administrator supplies the approved profile/PassRole or an approved alternate project environment. Private evidence and ready-to-send text are bundled locally in the Cloud Computing workspace at artifacts/aws-admin-request.zip.
