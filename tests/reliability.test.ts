@@ -1,3 +1,6 @@
+import express from 'express';
+import request from 'supertest';
+import { createApp } from '../backend/src/app.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SqliteStore, DynamoStore } from '../backend/src/store.js';
 import { HubService } from '../backend/src/service.js';
@@ -244,4 +247,29 @@ it('bounds each session cleanup batch and drains the backlog without touching ac
   expect(store.cleanupSessions()).toBe(1);
   expect(store.cleanupSessions()).toBe(0);
   expect(await store.get('session', 'active')).not.toBeNull();
+});
+
+it('uses the real viewer address through CloudFront and ALB while ignoring a spoofed earlier address', async () => {
+  const store = new SqliteStore(':memory:');
+  try {
+    const config = readConfig({
+      NODE_ENV: 'production',
+      DATABASE_DRIVER: 'postgres',
+      POSTGRES_URL: 'postgresql://app:local@localhost/hub',
+      POSTGRES_SSL: 'verify-full',
+      POSTGRES_CA_FILE: 'not-read-by-this-http-fixture.pem',
+      APP_ORIGIN: 'https://demo.example.test',
+      TRUST_PROXY_HOPS: '2',
+    });
+    const app = createApp(config, store, false);
+    const probe = express();
+    probe.set('trust proxy', app.get('trust proxy'));
+    probe.get('/test-remote-address', (req, res) => res.json({ ip: req.ip }));
+    const result = await request(probe)
+      .get('/test-remote-address')
+      .set('X-Forwarded-For', '198.51.100.99, 203.0.113.10, 192.0.2.20');
+    expect(result.body.ip).toBe('203.0.113.10');
+  } finally {
+    store.close();
+  }
 });

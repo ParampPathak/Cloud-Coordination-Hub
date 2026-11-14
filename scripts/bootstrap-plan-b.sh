@@ -43,7 +43,7 @@ if parsed.scheme not in ['postgres','postgresql'] or not parsed.hostname or not 
  raise SystemExit('Restricted PostgreSQL app URL required')
 ca=config['caPem']
 if '-----BEGIN CERTIFICATE-----' not in ca: raise SystemExit('RDS CA certificate required')
-values={'NODE_ENV':'production','DEPLOYMENT_MODE':'aws-multi','HOST':'0.0.0.0','PORT':'3000','APP_ORIGIN':sys.argv[1],'DATABASE_DRIVER':'postgres','POSTGRES_URL':url,'POSTGRES_SSL':'verify-full','POSTGRES_CA_FILE':'/run/cch/rds-ca.pem','POSTGRES_POOL_MAX':'5','ALLOW_AWS':'true'}
+values={'NODE_ENV':'production','DEPLOYMENT_MODE':'aws-multi','TRUST_PROXY_HOPS':'2','HOST':'0.0.0.0','PORT':'3000','APP_ORIGIN':sys.argv[1],'DATABASE_DRIVER':'postgres','POSTGRES_URL':url,'POSTGRES_SSL':'verify-full','POSTGRES_CA_FILE':'/run/cch/rds-ca.pem','POSTGRES_POOL_MAX':'5','ALLOW_AWS':'true'}
 if any(any(c in value for c in ['\n','\r','\0']) for value in values.values()): raise SystemExit('Invalid runtime config')
 Path('/etc/cloud-hub/app.env').write_text(''.join(key+'='+value+'\n' for key,value in values.items()))
 os.chmod('/etc/cloud-hub/app.env',0o600)

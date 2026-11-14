@@ -84,7 +84,9 @@ export function createApp(config: Config, store: Store, logging = true) {
   if (config.NODE_ENV === 'production')
     app.set(
       'trust proxy',
-      config.DATABASE_DRIVER === 'sqlite' ? 'loopback' : 1,
+      config.DATABASE_DRIVER === 'sqlite'
+        ? 'loopback'
+        : config.TRUST_PROXY_HOPS,
     );
   app.use(
     helmet({

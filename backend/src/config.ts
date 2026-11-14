@@ -32,6 +32,7 @@ export const envSchema = z.object({
     .min(60)
     .max(86400)
     .default(900),
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(1).max(2).default(1),
   HOST: z.string().default('127.0.0.1'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   APP_ORIGIN: z.url().default('http://localhost:5173'),
