@@ -27,7 +27,11 @@
     "demo:seed": "tsx scripts/seed.ts",
     "test:load": "npm run build && node dist/backend/scripts/load-test.js",
     "test:load:dynamodb": "npm run build && node dist/backend/scripts/load-test.js --dynamodb",
-    "data:migrate": "tsx scripts/migrate-database.ts"
+    "data:migrate": "tsx scripts/migrate-database.ts",
+    "test:postgres": "node scripts/local-postgres-test.mjs",
+    "db:init:postgres": "tsx scripts/init-postgres.ts",
+    "infra:validate:postgres": "node scripts/validate-plan-b.mjs",
+    "db:provision:postgres": "tsx scripts/provision-postgres.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.900.0",
@@ -38,6 +42,7 @@
     "express-rate-limit": "^8.1.0",
     "helmet": "^8.1.0",
     "lucide-react": "^0.468.0",
+    "pg": "^8.23.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.0",
@@ -51,6 +56,7 @@
     "@types/cookie-parser": "^1.4.9",
     "@types/express": "^5.0.3",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/supertest": "^6.0.3",

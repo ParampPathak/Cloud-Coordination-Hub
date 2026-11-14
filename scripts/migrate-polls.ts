@@ -44,5 +44,5 @@ try {
     `Poll migration complete: ${changed} legacy records upgraded. Existing votes preserved.`,
   );
 } finally {
-  store.close();
+  await store.close();
 }

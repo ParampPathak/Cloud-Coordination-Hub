@@ -1,11 +1,10 @@
 import { freemem, totalmem } from 'node:os';
 import { createApp } from './app.js';
 import { allowedOrigins, readConfig } from './config.js';
+import { PostgresStore } from './postgres-store.js';
 import { createStore, SqliteStore } from './store.js';
 const config = readConfig();
 const store = createStore(config);
-if (store instanceof SqliteStore)
-  store.startSessionCleanup(config.SESSION_CLEANUP_SECONDS);
 try {
   await store.ready();
 } catch (error) {
@@ -20,6 +19,8 @@ try {
   store.close();
   process.exit(1);
 }
+if (store instanceof SqliteStore || store instanceof PostgresStore)
+  store.startSessionCleanup(config.SESSION_CLEANUP_SECONDS);
 // CloudWatch Logs metric filters consume these bounded, non-identifying samples.
 setInterval(
   () =>
@@ -73,8 +74,8 @@ server.on('error', (error: NodeJS.ErrnoException) => {
 });
 for (const signal of ['SIGTERM', 'SIGINT'])
   process.on(signal, () => {
-    server.close(() => {
-      store.close();
+    server.close(async () => {
+      await store.close();
       process.exit(0);
     });
     setTimeout(() => process.exit(1), 10_000).unref();

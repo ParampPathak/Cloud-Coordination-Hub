@@ -81,3 +81,7 @@ The old snapshot interface is now capped and deprecated. Earlier paragraphs desc
 Committed activity is additionally indexed in `activity-user:<user UUID>` partitions for the actor and resource owner (deduplicated), in the same database transaction. The overview queries only its own partition newest first; it no longer loses relevant recent entries behind unrelated users' activity. SQLite migration `002-activity-scope` backfills once transactionally. The DynamoDB stopped-writer rebuild command also populates these partitions. Read-time ownership/anonymity checks remain defense in depth. Each audit action uses at most two extra small writes; the transaction-size guard accounts for internal writes.
 
 Session cleanup deletes at most 500 expired records per indexed batch/interval; large backlogs drain over subsequent intervals while authentication keeps rejecting expired tokens.
+
+## PostgreSQL Plan B preparation
+
+A third adapter now preserves the versioned aggregate/transaction contract on PostgreSQL while SQLite remains the default. See [Plan B preparation](plan-b-preparation.md) for schema initialization, restricted runtime privileges, migration, TLS, concurrency evidence and the remaining AWS gates. The managed-DynamoDB templates and Plan C SQLite path remain available. No RDS deployment has occurred.

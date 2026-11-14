@@ -1,3 +1,4 @@
+import { PostgresStore } from './postgres-store.js';
 import { contribution, emptySummary, type Summary } from './read-model.js';
 import { HttpError } from './errors.js';
 import { DatabaseSync } from 'node:sqlite';
@@ -47,7 +48,7 @@ export interface Store {
   ): Promise<boolean>;
   remove(kind: string, id: string): Promise<void>;
   ready(): Promise<void>;
-  close(): void;
+  close(): void | Promise<void>;
 }
 export interface StoreWrite {
   kind: string;
@@ -55,7 +56,7 @@ export interface StoreWrite {
   data: unknown;
   expected: number | null;
 }
-function validateWrites(writes: StoreWrite[], activity?: Activity) {
+export function validateWrites(writes: StoreWrite[], activity?: Activity) {
   if (
     !writes.length ||
     writes.length +
@@ -374,7 +375,7 @@ export class SqliteStore implements Store {
     this.db.close();
   }
 }
-function serialize(data: unknown) {
+export function serialize(data: unknown) {
   const json = JSON.stringify(data);
   if (Buffer.byteLength(json, 'utf8') > 300_000)
     throw new Error(
@@ -717,6 +718,7 @@ export class DynamoStore implements Store {
   }
 }
 export function createStore(config: Config): Store {
+  if (config.DATABASE_DRIVER === 'postgres') return new PostgresStore(config);
   return config.DATABASE_DRIVER === 'sqlite'
     ? new SqliteStore(config.SQLITE_PATH)
     : new DynamoStore(config);

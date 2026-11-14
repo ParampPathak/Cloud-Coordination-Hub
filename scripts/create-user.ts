@@ -22,5 +22,5 @@ try {
   );
   console.log(`Created ${user.role}: ${user.email}`);
 } finally {
-  store.close();
+  await store.close();
 }

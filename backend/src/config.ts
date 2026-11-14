@@ -36,7 +36,11 @@ export const envSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
   APP_ORIGIN: z.url().default('http://localhost:5173'),
   ALLOW_INSECURE_HTTP: z.enum(['true', 'false']).default('false'),
-  DATABASE_DRIVER: z.enum(['sqlite', 'dynamodb']).default('sqlite'),
+  DATABASE_DRIVER: z.enum(['sqlite', 'dynamodb', 'postgres']).default('sqlite'),
+  POSTGRES_URL: z.string().optional(),
+  POSTGRES_SSL: z.enum(['disable', 'verify-full']).default('disable'),
+  POSTGRES_CA_FILE: z.string().optional(),
+  POSTGRES_POOL_MAX: z.coerce.number().int().min(1).max(20).default(5),
   SQLITE_PATH: z.string().default('./data/hub.sqlite'),
   ALLOW_AWS: z.enum(['true', 'false']).default('false'),
   DYNAMODB_ENDPOINT: z.url().optional(),
@@ -99,9 +103,43 @@ export function readConfig(source = process.env): Config {
   }
   if (
     config.DEPLOYMENT_MODE === 'aws-multi' &&
-    (config.DATABASE_DRIVER !== 'dynamodb' || config.DYNAMODB_ENDPOINT)
+    (!['dynamodb', 'postgres'].includes(config.DATABASE_DRIVER) ||
+      (config.DATABASE_DRIVER === 'dynamodb' && config.DYNAMODB_ENDPOINT))
   )
-    throw new Error('Multi-instance AWS requires shared Amazon DynamoDB.');
+    throw new Error(
+      'Multi-instance AWS requires shared Amazon DynamoDB or PostgreSQL.',
+    );
+  if (config.DATABASE_DRIVER === 'postgres') {
+    let database: URL;
+    try {
+      database = new URL(config.POSTGRES_URL ?? '');
+    } catch {
+      throw new Error('POSTGRES_URL must be a PostgreSQL connection URL.');
+    }
+    if (
+      !['postgres:', 'postgresql:'].includes(database.protocol) ||
+      database.search ||
+      database.hash ||
+      !database.hostname ||
+      !database.username ||
+      database.pathname.length < 2
+    )
+      throw new Error(
+        'POSTGRES_URL requires a host, user and database, without query options or fragments.',
+      );
+    const local = ['127.0.0.1', 'localhost', '[::1]', 'postgres'].includes(
+      database.hostname,
+    );
+    if (!local && config.ALLOW_AWS !== 'true')
+      throw new Error('Remote PostgreSQL access requires ALLOW_AWS=true.');
+    if (
+      (config.NODE_ENV === 'production' || !local) &&
+      (config.POSTGRES_SSL !== 'verify-full' || !config.POSTGRES_CA_FILE)
+    )
+      throw new Error(
+        'Production/remote PostgreSQL requires verified TLS and POSTGRES_CA_FILE.',
+      );
+  }
   if (config.DATABASE_DRIVER === 'dynamodb') {
     if (config.DYNAMODB_ENDPOINT) {
       const url = new URL(config.DYNAMODB_ENDPOINT);

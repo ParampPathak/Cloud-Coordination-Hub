@@ -2,6 +2,10 @@
 
 Status: Plan A remains blocked; Plans B/C have permission-supported alternatives awaiting implementation and deployment approval. No final deployment is running in the inspected account. Region: us-east-1. Application release: 71fa096545f147c6ad5a7fdf1414163192c731da. The lab was started with explicit user approval and was left running; no End Lab action was performed.
 
+## Plan B implementation update
+
+The user selected Plan B preparation only. PostgreSQL storage, local concurrency/TLS verification and a separate CloudFormation/bootstrap path are prepared; no AWS deployment was authorized or executed. Read [the preparation runbook](plan-b-preparation.md) before any new provisioning. The old 71fa096 software archive lacks PostgreSQL and is only a preserved fallback artifact. RDS ModifyDBInstance simulation is explicitly denied, so deletion-protection/cleanup must be resolved before spending. The protected template has not been weakened.
+
 ## Resume from verified evidence
 
 Read [the deployment alternatives audit](aws-deployment-options.md), [the current preflight](aws-live-verification.md), [pending performance results](final-aws-performance.md), and [the optional HTTPS proposal](AWS_CLOUDFRONT_PROPOSAL.md). The original final stack is not deployed. Earlier public demo responses reported SQLite. The latest audit found its hostname no longer resolves; do not present it as a working link. Those historical responses never established a shared DynamoDB or two-instance deployment.

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { SqliteStore, DynamoStore, type Store } from '../backend/src/store.js';
+import { PostgresStore } from '../backend/src/postgres-store.js';
 import { readConfig } from '../backend/src/config.js';
 import { HubService } from '../backend/src/service.js';
 import {
@@ -103,6 +104,7 @@ describe('Office-hour generation', () => {
 
 for (const driver of [
   'sqlite',
+  ...(process.env.RUN_POSTGRES_TESTS === 'true' ? ['postgres'] : []),
   ...(process.env.RUN_DYNAMODB_TESTS === 'true' ? ['dynamodb'] : []),
 ])
   describe(`${driver}: scheduling and groups across independent clients`, () => {
@@ -119,18 +121,30 @@ for (const driver of [
               new SqliteStore(join(directory, 'test.sqlite')),
               new SqliteStore(join(directory, 'test.sqlite')),
             ]
-          : [0, 1].map(
-              () =>
-                new DynamoStore(
-                  readConfig({
-                    DATABASE_DRIVER: 'dynamodb',
-                    DYNAMODB_ENDPOINT:
-                      process.env.DYNAMODB_ENDPOINT ?? 'http://127.0.0.1:8000',
-                    DYNAMODB_TABLE:
-                      process.env.DYNAMODB_TABLE ?? 'cloud-coordination-local',
-                  }),
-                ),
-            );
+          : driver === 'postgres'
+            ? [0, 1].map(
+                () =>
+                  new PostgresStore(
+                    readConfig({
+                      DATABASE_DRIVER: 'postgres',
+                      POSTGRES_URL: process.env.POSTGRES_TEST_URL,
+                    }),
+                  ),
+              )
+            : [0, 1].map(
+                () =>
+                  new DynamoStore(
+                    readConfig({
+                      DATABASE_DRIVER: 'dynamodb',
+                      DYNAMODB_ENDPOINT:
+                        process.env.DYNAMODB_ENDPOINT ??
+                        'http://127.0.0.1:8000',
+                      DYNAMODB_TABLE:
+                        process.env.DYNAMODB_TABLE ??
+                        'cloud-coordination-local',
+                    }),
+                  ),
+              );
       touched.clear();
       const track = (kind: string, id: string) =>
         touched.set(JSON.stringify([kind, id]), [kind, id]);
@@ -170,11 +184,11 @@ for (const driver of [
     });
     afterEach(async () => {
       try {
-        if (driver === 'dynamodb')
+        if (driver !== 'sqlite')
           for (const [kind, id] of touched.values())
             await stores[0].remove(kind, id);
       } finally {
-        stores.forEach((s) => s.close());
+        await Promise.all(stores.map((s) => s.close()));
         rmSync(directory, { recursive: true, force: true });
       }
     });

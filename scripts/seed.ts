@@ -9,6 +9,7 @@ if (
       process.env.ALLOW_DEMO_SEED === 'true'
     )) ||
   config.ALLOW_AWS === 'true' ||
+  config.DATABASE_DRIVER === 'postgres' ||
   (config.DATABASE_DRIVER === 'dynamodb' && !config.DYNAMODB_ENDPOINT)
 )
   throw new Error(
@@ -28,5 +29,5 @@ try {
   );
   console.log(`Temporary password for both: ${password}`);
 } finally {
-  store.close();
+  await store.close();
 }

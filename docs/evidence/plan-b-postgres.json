@@ -1,0 +1,34 @@
+{
+  "scope": "Local preparation only; no AWS deployment",
+  "postgres": {
+    "serverVersion": "17.11",
+    "localOnly": true,
+    "temporaryDatabase": true,
+    "exitCode": 0,
+    "observedAt": "2026-11-14T04:18:53.520Z"
+  },
+  "tests": {
+    "success": true,
+    "numTotalTests": 32,
+    "numPassedTests": 32,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "tls": "Trusted local CA accepted; untrusted CA rejected in this run",
+  "awsPerformanceMeasured": false,
+  "artifacts": "Full local test output and account-specific evidence remain private under artifacts/",
+  "checks": {
+    "ordinaryRegression": {
+      "passed": 99,
+      "gatedSkipped": 17
+    },
+    "lint": true,
+    "typecheck": true,
+    "productionBuild": true,
+    "productionSQLiteFallbackSmoke": true,
+    "cfnLintAllFourTemplates": true,
+    "planBDependencyAndSecurityChecks": true,
+    "shellSyntax": true,
+    "awsDeployment": false
+  }
+}

@@ -4,6 +4,8 @@ Reviewed 13 November 2026, America/Chicago. Region: us-east-1. This was a read-o
 
 **Recommendation: Plan B is the strongest permission-feasible alternative if PostgreSQL is an acceptable substitution for DynamoDB. Plan C is the lowest implementation-risk route to a feature demonstration. The exact DynamoDB design in Plan A remains blocked with the identities currently available.** These are prospective plans, not verified running deployments.
 
+**Later preparation update:** the PostgreSQL adapter and separate Plan B template are now implemented and locally tested. Read [Plan B preparation and new lifecycle blockers](plan-b-preparation.md). The audit below records the earlier decision point; its statements that no adapter existed are historical, and none of its permission checks establishes deployment.
+
 ## Evidence and confidence
 
 STS matched the Console account. The exact account ID and full raw role/policy evidence remain in the private local audit, not this public report. The account-specific aws-admin-request.zip was inspected: it requests the missing cch-final-app EC2 trust/profile, table/log permissions, and exact-role PassRole. Those requested grants have not been applied.

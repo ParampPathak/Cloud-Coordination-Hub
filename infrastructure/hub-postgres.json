@@ -1,0 +1,916 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Plan B PREPARATION: private two-AZ app/ASG, CloudFront VPC-origin ALB, Single-AZ PostgreSQL. Default app capacity zero; separate private SQL setup required. No IAM policies/roles created by template.",
+  "Parameters": {
+    "EnvironmentName": {
+      "Type": "String",
+      "Default": "cch-plan-b",
+      "AllowedPattern": "[a-z][a-z0-9-]{2,20}"
+    },
+    "AvailabilityZoneA": {
+      "Type": "AWS::EC2::AvailabilityZone::Name",
+      "Description": "Choose a supported AZ; physical use1-az3 is excluded for CloudFront VPC origins."
+    },
+    "AvailabilityZoneB": {
+      "Type": "AWS::EC2::AvailabilityZone::Name",
+      "Description": "A different supported physical AZ; verify names-to-IDs before deployment."
+    },
+    "ApplicationAmi": {
+      "Type": "AWS::EC2::Image::Id",
+      "Description": "Pinned standard Amazon-owned AL2023 x86_64 image with AWS CLI v2."
+    },
+    "ExistingInstanceProfile": {
+      "Type": "String",
+      "Default": "myS3Role",
+      "AllowedPattern": "[A-Za-z0-9+=,.@_-]+"
+    },
+    "CloudFrontPrefixListId": {
+      "Type": "String",
+      "AllowedPattern": "pl-[a-f0-9]+",
+      "Description": "Regional com.amazonaws.global.cloudfront.origin-facing managed prefix list ID."
+    },
+    "ArtifactBucket": {
+      "Type": "String",
+      "AllowedPattern": "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]",
+      "Description": "Pre-staged private, same-region encrypted S3 bucket; stack does not create or empty it."
+    },
+    "ReleaseKey": {
+      "Type": "String",
+      "AllowedPattern": "releases/[A-Za-z0-9/._-]+"
+    },
+    "ReleaseSha256": {
+      "Type": "String",
+      "AllowedPattern": "[a-f0-9]{64}"
+    },
+    "BootstrapKey": {
+      "Type": "String",
+      "AllowedPattern": "releases/[A-Za-z0-9/._-]+"
+    },
+    "BootstrapSha256": {
+      "Type": "String",
+      "AllowedPattern": "[a-f0-9]{64}"
+    },
+    "RuntimeConfigKey": {
+      "Type": "String",
+      "AllowedPattern": "config/[A-Za-z0-9/._-]+",
+      "Description": "Private app-only runtime JSON, uploaded after DB/schema/distribution are ready; never include the master credential."
+    },
+    "InstanceType": {
+      "Type": "String",
+      "Default": "t3.micro",
+      "AllowedValues": ["t3.micro", "t3.small"]
+    },
+    "DockerPackageVersion": {
+      "Type": "String",
+      "Description": "Exact docker RPM version-release.arch validated in the pinned AL2023 S3 repository; no floating latest.",
+      "AllowedPattern": "[A-Za-z0-9._+-]+"
+    },
+    "PostgresEngineVersion": {
+      "Type": "String",
+      "Default": "17.7",
+      "Description": "Reconfirm an orderable PostgreSQL 17 minor before deployment."
+    },
+    "DatabaseMasterPassword": {
+      "Type": "String",
+      "NoEcho": true,
+      "MinLength": 20,
+      "MaxLength": 64,
+      "AllowedPattern": "[A-Za-z0-9_-]+",
+      "Description": "Private random schema-owner password. Never supplied to the application instances."
+    },
+    "DesiredCapacity": {
+      "Type": "Number",
+      "Default": 0,
+      "AllowedValues": [0, 2],
+      "Description": "Stage 1: zero. After private SQL setup/config upload: two. This initial stack is not a running application."
+    },
+    "MinCapacity": {
+      "Type": "Number",
+      "Default": 0,
+      "AllowedValues": [0, 2]
+    },
+    "MaxCapacity": {
+      "Type": "Number",
+      "Default": 3,
+      "AllowedValues": [2, 3]
+    }
+  },
+  "Rules": {
+    "DistinctAZs": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Not": [
+              {
+                "Fn::Equals": [
+                  {
+                    "Ref": "AvailabilityZoneA"
+                  },
+                  {
+                    "Ref": "AvailabilityZoneB"
+                  }
+                ]
+              }
+            ]
+          },
+          "AssertDescription": "Select two different supported AZs."
+        }
+      ]
+    },
+    "SafeCapacity": {
+      "Assertions": [
+        {
+          "Assert": {
+            "Fn::Equals": [
+              {
+                "Ref": "MinCapacity"
+              },
+              {
+                "Ref": "DesiredCapacity"
+              }
+            ]
+          },
+          "AssertDescription": "Use 0/0 for setup or 2/2 for the approved application deployment."
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "Vpc": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "10.43.0.0/16",
+        "EnableDnsSupport": true,
+        "EnableDnsHostnames": true,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "EnvironmentName"
+            }
+          }
+        ]
+      }
+    },
+    "InternetGateway": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {}
+    },
+    "GatewayAttachment": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "InternetGatewayId": {
+          "Ref": "InternetGateway"
+        }
+      }
+    },
+    "PrivateA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.43.10.0/24",
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZoneA"
+        },
+        "MapPublicIpOnLaunch": false
+      }
+    },
+    "PrivateRoutesA": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        }
+      }
+    },
+    "PrivateAssociationA": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PrivateA"
+        },
+        "RouteTableId": {
+          "Ref": "PrivateRoutesA"
+        }
+      }
+    },
+    "PrivateB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "CidrBlock": "10.43.11.0/24",
+        "AvailabilityZone": {
+          "Ref": "AvailabilityZoneB"
+        },
+        "MapPublicIpOnLaunch": false
+      }
+    },
+    "PrivateRoutesB": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        }
+      }
+    },
+    "PrivateAssociationB": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "SubnetId": {
+          "Ref": "PrivateB"
+        },
+        "RouteTableId": {
+          "Ref": "PrivateRoutesB"
+        }
+      }
+    },
+    "S3Endpoint": {
+      "Type": "AWS::EC2::VPCEndpoint",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "ServiceName": {
+          "Fn::Sub": "com.amazonaws.${AWS::Region}.s3"
+        },
+        "VpcEndpointType": "Gateway",
+        "RouteTableIds": [
+          {
+            "Ref": "PrivateRoutesA"
+          },
+          {
+            "Ref": "PrivateRoutesB"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": ["s3:GetObject"],
+              "Resource": [
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:s3:::${ArtifactBucket}/config/*"
+                },
+                {
+                  "Fn::Sub": "arn:${AWS::Partition}:s3:::al2023-repos-${AWS::Region}-de612dc2/*"
+                }
+              ]
+            },
+            {
+              "Effect": "Allow",
+              "Principal": "*",
+              "Action": ["s3:PutObject"],
+              "Resource": {
+                "Fn::Sub": "arn:${AWS::Partition}:s3:::${ArtifactBucket}/logs/*"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "AlbSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "CloudFront managed prefix list only",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 80,
+            "ToPort": 80,
+            "SourcePrefixListId": {
+              "Ref": "CloudFrontPrefixListId"
+            }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3000,
+            "ToPort": 3000,
+            "CidrIp": "10.43.0.0/16"
+          }
+        ]
+      }
+    },
+    "AppSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Only ALB to app; no SSH",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 3000,
+            "ToPort": 3000,
+            "SourceSecurityGroupId": {
+              "Ref": "AlbSecurityGroup"
+            }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 443,
+            "ToPort": 443,
+            "CidrIp": "0.0.0.0/0"
+          },
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "CidrIp": "10.43.0.0/16"
+          }
+        ]
+      }
+    },
+    "DatabaseSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "App PostgreSQL verified TLS; private management rules added only after approval",
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 5432,
+            "ToPort": 5432,
+            "SourceSecurityGroupId": {
+              "Ref": "AppSecurityGroup"
+            }
+          }
+        ],
+        "SecurityGroupEgress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": 1,
+            "ToPort": 1,
+            "CidrIp": "127.0.0.1/32"
+          }
+        ]
+      }
+    },
+    "DatabaseSubnets": {
+      "Type": "AWS::RDS::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Two private subnets; DB is Single-AZ",
+        "SubnetIds": [
+          {
+            "Ref": "PrivateA"
+          },
+          {
+            "Ref": "PrivateB"
+          }
+        ]
+      }
+    },
+    "DatabaseParameters": {
+      "Type": "AWS::RDS::DBParameterGroup",
+      "Properties": {
+        "Description": "Force PostgreSQL TLS",
+        "Family": "postgres17",
+        "Parameters": {
+          "rds.force_ssl": "1",
+          "log_statement": "none",
+          "log_min_error_statement": "panic"
+        }
+      }
+    },
+    "Database": {
+      "Type": "AWS::RDS::DBInstance",
+      "Properties": {
+        "Engine": "postgres",
+        "EngineVersion": {
+          "Ref": "PostgresEngineVersion"
+        },
+        "DBInstanceClass": "db.t3.micro",
+        "AllocatedStorage": "20",
+        "StorageType": "gp2",
+        "StorageEncrypted": true,
+        "MultiAZ": false,
+        "PubliclyAccessible": false,
+        "DBName": "cloudhub",
+        "MasterUsername": "cch_owner",
+        "MasterUserPassword": {
+          "Ref": "DatabaseMasterPassword"
+        },
+        "DBSubnetGroupName": {
+          "Ref": "DatabaseSubnets"
+        },
+        "DBParameterGroupName": {
+          "Ref": "DatabaseParameters"
+        },
+        "VPCSecurityGroups": [
+          {
+            "Ref": "DatabaseSecurityGroup"
+          }
+        ],
+        "BackupRetentionPeriod": 1,
+        "DeletionProtection": true,
+        "AutoMinorVersionUpgrade": true,
+        "EnableIAMDatabaseAuthentication": false,
+        "CopyTagsToSnapshot": true,
+        "Tags": [
+          {
+            "Key": "Project",
+            "Value": {
+              "Ref": "EnvironmentName"
+            }
+          }
+        ]
+      },
+      "DeletionPolicy": "Snapshot",
+      "UpdateReplacePolicy": "Snapshot",
+      "Metadata": {
+        "cfn-lint": {
+          "config": {
+            "ignore_checks": ["W1011"]
+          }
+        }
+      }
+    },
+    "LoadBalancer": {
+      "Type": "AWS::ElasticLoadBalancingV2::LoadBalancer",
+      "Properties": {
+        "Scheme": "internal",
+        "Type": "application",
+        "IpAddressType": "ipv4",
+        "Subnets": [
+          {
+            "Ref": "PrivateA"
+          },
+          {
+            "Ref": "PrivateB"
+          }
+        ],
+        "SecurityGroups": [
+          {
+            "Ref": "AlbSecurityGroup"
+          }
+        ],
+        "LoadBalancerAttributes": [
+          {
+            "Key": "routing.http.drop_invalid_header_fields.enabled",
+            "Value": "true"
+          },
+          {
+            "Key": "idle_timeout.timeout_seconds",
+            "Value": "60"
+          }
+        ]
+      }
+    },
+    "Targets": {
+      "Type": "AWS::ElasticLoadBalancingV2::TargetGroup",
+      "Properties": {
+        "VpcId": {
+          "Ref": "Vpc"
+        },
+        "Port": 3000,
+        "Protocol": "HTTP",
+        "TargetType": "instance",
+        "HealthCheckPath": "/api/ready",
+        "HealthCheckIntervalSeconds": 30,
+        "HealthyThresholdCount": 2,
+        "UnhealthyThresholdCount": 3,
+        "TargetGroupAttributes": [
+          {
+            "Key": "deregistration_delay.timeout_seconds",
+            "Value": "30"
+          },
+          {
+            "Key": "stickiness.enabled",
+            "Value": "false"
+          }
+        ]
+      }
+    },
+    "Listener": {
+      "Type": "AWS::ElasticLoadBalancingV2::Listener",
+      "Properties": {
+        "LoadBalancerArn": {
+          "Ref": "LoadBalancer"
+        },
+        "Port": 80,
+        "Protocol": "HTTP",
+        "DefaultActions": [
+          {
+            "Type": "forward",
+            "TargetGroupArn": {
+              "Ref": "Targets"
+            }
+          }
+        ]
+      }
+    },
+    "VpcOrigin": {
+      "Type": "AWS::CloudFront::VpcOrigin",
+      "Properties": {
+        "VpcOriginEndpointConfig": {
+          "Arn": {
+            "Ref": "LoadBalancer"
+          },
+          "Name": {
+            "Ref": "EnvironmentName"
+          },
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "http-only"
+        }
+      },
+      "DependsOn": ["GatewayAttachment", "Listener"]
+    },
+    "NoCache": {
+      "Type": "AWS::CloudFront::CachePolicy",
+      "Properties": {
+        "CachePolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${EnvironmentName}-${AWS::AccountId}-no-cache"
+          },
+          "DefaultTTL": 0,
+          "MinTTL": 0,
+          "MaxTTL": 0,
+          "ParametersInCacheKeyAndForwardedToOrigin": {
+            "CookiesConfig": {
+              "CookieBehavior": "none"
+            },
+            "HeadersConfig": {
+              "HeaderBehavior": "none"
+            },
+            "QueryStringsConfig": {
+              "QueryStringBehavior": "none"
+            },
+            "EnableAcceptEncodingGzip": false
+          }
+        }
+      }
+    },
+    "OriginRequests": {
+      "Type": "AWS::CloudFront::OriginRequestPolicy",
+      "Properties": {
+        "OriginRequestPolicyConfig": {
+          "Name": {
+            "Fn::Sub": "${EnvironmentName}-${AWS::AccountId}-requests"
+          },
+          "CookiesConfig": {
+            "CookieBehavior": "all"
+          },
+          "QueryStringsConfig": {
+            "QueryStringBehavior": "all"
+          },
+          "HeadersConfig": {
+            "HeaderBehavior": "allExcept",
+            "Headers": ["host"]
+          }
+        }
+      }
+    },
+    "Distribution": {
+      "Type": "AWS::CloudFront::Distribution",
+      "Properties": {
+        "DistributionConfig": {
+          "Enabled": true,
+          "Comment": "Plan B PostgreSQL; private ALB; no application caching",
+          "HttpVersion": "http2",
+          "IPV6Enabled": true,
+          "PriceClass": "PriceClass_100",
+          "ViewerCertificate": {
+            "CloudFrontDefaultCertificate": true
+          },
+          "Origins": [
+            {
+              "Id": "private-alb",
+              "DomainName": {
+                "Fn::GetAtt": ["LoadBalancer", "DNSName"]
+              },
+              "VpcOriginConfig": {
+                "VpcOriginId": {
+                  "Fn::GetAtt": ["VpcOrigin", "Id"]
+                },
+                "OriginReadTimeout": 45,
+                "OriginKeepaliveTimeout": 5
+              }
+            }
+          ],
+          "DefaultCacheBehavior": {
+            "TargetOriginId": "private-alb",
+            "ViewerProtocolPolicy": "redirect-to-https",
+            "AllowedMethods": [
+              "GET",
+              "HEAD",
+              "OPTIONS",
+              "PUT",
+              "PATCH",
+              "POST",
+              "DELETE"
+            ],
+            "CachedMethods": ["GET", "HEAD"],
+            "CachePolicyId": {
+              "Ref": "NoCache"
+            },
+            "OriginRequestPolicyId": {
+              "Ref": "OriginRequests"
+            },
+            "Compress": true
+          },
+          "CustomErrorResponses": [
+            {
+              "ErrorCode": 400,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 403,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 404,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 405,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 414,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 416,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 500,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 501,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 502,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 503,
+              "ErrorCachingMinTTL": 0
+            },
+            {
+              "ErrorCode": 504,
+              "ErrorCachingMinTTL": 0
+            }
+          ]
+        }
+      }
+    },
+    "LaunchTemplate": {
+      "Type": "AWS::EC2::LaunchTemplate",
+      "Properties": {
+        "LaunchTemplateData": {
+          "ImageId": {
+            "Ref": "ApplicationAmi"
+          },
+          "InstanceType": {
+            "Ref": "InstanceType"
+          },
+          "IamInstanceProfile": {
+            "Name": {
+              "Ref": "ExistingInstanceProfile"
+            }
+          },
+          "MetadataOptions": {
+            "HttpTokens": "required",
+            "HttpEndpoint": "enabled",
+            "HttpPutResponseHopLimit": 1
+          },
+          "NetworkInterfaces": [
+            {
+              "DeviceIndex": 0,
+              "AssociatePublicIpAddress": false,
+              "Groups": [
+                {
+                  "Ref": "AppSecurityGroup"
+                }
+              ]
+            }
+          ],
+          "BlockDeviceMappings": [
+            {
+              "DeviceName": "/dev/xvda",
+              "Ebs": {
+                "VolumeType": "gp2",
+                "VolumeSize": 30,
+                "Encrypted": true,
+                "DeleteOnTermination": true
+              }
+            }
+          ],
+          "CreditSpecification": {
+            "CpuCredits": "standard"
+          },
+          "UserData": {
+            "Fn::Base64": {
+              "Fn::Sub": "#!/bin/bash\nset -euo pipefail\numask 077\nexport AWS_DEFAULT_REGION=${AWS::Region}\nmkdir -p /opt/cch-bootstrap\naws s3 cp s3://${ArtifactBucket}/${BootstrapKey} /opt/cch-bootstrap/bootstrap.sh --only-show-errors\nprintf '%s  %s\\n' '${BootstrapSha256}' /opt/cch-bootstrap/bootstrap.sh | sha256sum -c -\nbash /opt/cch-bootstrap/bootstrap.sh '${ArtifactBucket}' '${ReleaseKey}' '${ReleaseSha256}' '${RuntimeConfigKey}' 'https://${Distribution.DomainName}' '${DockerPackageVersion}'\n"
+            }
+          }
+        }
+      },
+      "DependsOn": "S3Endpoint"
+    },
+    "ApplicationGroup": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "MinSize": {
+          "Ref": "MinCapacity"
+        },
+        "DesiredCapacity": {
+          "Ref": "DesiredCapacity"
+        },
+        "MaxSize": {
+          "Ref": "MaxCapacity"
+        },
+        "VPCZoneIdentifier": [
+          {
+            "Ref": "PrivateA"
+          },
+          {
+            "Ref": "PrivateB"
+          }
+        ],
+        "TargetGroupARNs": [
+          {
+            "Ref": "Targets"
+          }
+        ],
+        "HealthCheckType": "ELB",
+        "HealthCheckGracePeriod": 900,
+        "LaunchTemplate": {
+          "LaunchTemplateId": {
+            "Ref": "LaunchTemplate"
+          },
+          "Version": {
+            "Fn::GetAtt": ["LaunchTemplate", "LatestVersionNumber"]
+          }
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": {
+              "Ref": "EnvironmentName"
+            },
+            "PropagateAtLaunch": true
+          }
+        ]
+      },
+      "DependsOn": ["Database", "Listener"],
+      "UpdatePolicy": {
+        "AutoScalingRollingUpdate": {
+          "MinInstancesInService": 1,
+          "MaxBatchSize": 1,
+          "PauseTime": "PT5M"
+        }
+      }
+    },
+    "CpuScaling": {
+      "Type": "AWS::AutoScaling::ScalingPolicy",
+      "Properties": {
+        "AutoScalingGroupName": {
+          "Ref": "ApplicationGroup"
+        },
+        "PolicyType": "TargetTrackingScaling",
+        "EstimatedInstanceWarmup": 300,
+        "TargetTrackingConfiguration": {
+          "PredefinedMetricSpecification": {
+            "PredefinedMetricType": "ASGAverageCPUUtilization"
+          },
+          "TargetValue": 65.0
+        }
+      }
+    },
+    "UnhealthyTargetsAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/ApplicationELB",
+        "MetricName": "UnHealthyHostCount",
+        "Dimensions": [
+          {
+            "Name": "LoadBalancer",
+            "Value": {
+              "Fn::GetAtt": ["LoadBalancer", "LoadBalancerFullName"]
+            }
+          },
+          {
+            "Name": "TargetGroup",
+            "Value": {
+              "Fn::GetAtt": ["Targets", "TargetGroupFullName"]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 3,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "DatabaseFreeStorageAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/RDS",
+        "MetricName": "FreeStorageSpace",
+        "Dimensions": [
+          {
+            "Name": "DBInstanceIdentifier",
+            "Value": {
+              "Ref": "Database"
+            }
+          }
+        ],
+        "Statistic": "Minimum",
+        "Period": 60,
+        "EvaluationPeriods": 3,
+        "Threshold": 2147483648,
+        "ComparisonOperator": "LessThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    },
+    "DatabaseCpuAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Properties": {
+        "Namespace": "AWS/RDS",
+        "MetricName": "CPUUtilization",
+        "Dimensions": [
+          {
+            "Name": "DBInstanceIdentifier",
+            "Value": {
+              "Ref": "Database"
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 60,
+        "EvaluationPeriods": 3,
+        "Threshold": 80,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching"
+      }
+    }
+  },
+  "Outputs": {
+    "ApplicationUrl": {
+      "Value": {
+        "Fn::Sub": "https://${Distribution.DomainName}"
+      }
+    },
+    "DatabaseHost": {
+      "Value": {
+        "Fn::GetAtt": ["Database", "Endpoint.Address"]
+      }
+    },
+    "DatabaseName": {
+      "Value": "cloudhub"
+    },
+    "VpcId": {
+      "Value": {
+        "Ref": "Vpc"
+      }
+    },
+    "PrivateSubnetA": {
+      "Value": {
+        "Ref": "PrivateA"
+      }
+    },
+    "ManagementSecurityGroup": {
+      "Value": {
+        "Ref": "AppSecurityGroup"
+      }
+    },
+    "ApplicationGroupName": {
+      "Value": {
+        "Ref": "ApplicationGroup"
+      }
+    },
+    "DistributionId": {
+      "Value": {
+        "Ref": "Distribution"
+      }
+    }
+  }
+}

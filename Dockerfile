@@ -13,7 +13,7 @@ COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist/frontend ./dist/frontend
 COPY --from=build --chown=node:node /app/dist/backend/backend ./dist/backend/backend
 COPY --from=build --chown=node:node /app/dist/backend/shared ./dist/backend/shared
-COPY --from=build --chown=node:node /app/dist/backend/scripts/create-user.js /app/dist/backend/scripts/seed.js /app/dist/backend/scripts/rebuild-summary.js /app/dist/backend/scripts/migrate-database.js ./dist/backend/scripts/
+COPY --from=build --chown=node:node /app/dist/backend/scripts/create-user.js /app/dist/backend/scripts/seed.js /app/dist/backend/scripts/rebuild-summary.js /app/dist/backend/scripts/migrate-database.js /app/dist/backend/scripts/init-postgres.js /app/dist/backend/scripts/provision-postgres.js ./dist/backend/scripts/
 RUN mkdir /app/data && chown node:node /app/data
 USER node
 EXPOSE 3000

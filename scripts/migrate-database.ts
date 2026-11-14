@@ -1,11 +1,11 @@
-// Non-destructive SQLite snapshot export / resumable conditional DynamoDB import.
+// Non-destructive SQLite snapshot export / resumable conditional DynamoDB or PostgreSQL import.
 import { isDeepStrictEqual } from 'node:util';
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { z } from 'zod';
 import { readConfig } from '../backend/src/config.js';
-import { DynamoStore } from '../backend/src/store.js';
+import { createStore } from '../backend/src/store.js';
 const [mode, source, destination] = process.argv.slice(2);
 if (!['export', 'import'].includes(mode) || !source)
   throw new Error(
@@ -42,9 +42,9 @@ if (mode === 'export') {
   }
 } else {
   const config = readConfig();
-  if (config.DATABASE_DRIVER !== 'dynamodb')
+  if (!['dynamodb', 'postgres'].includes(config.DATABASE_DRIVER))
     throw new Error(
-      'Set DATABASE_DRIVER=dynamodb and the intended target table explicitly.',
+      'Set DATABASE_DRIVER=dynamodb or postgres and the intended target explicitly.',
     );
   const backup = z
     .object({
@@ -67,7 +67,7 @@ if (mode === 'export') {
     throw new Error(
       'Import requires ALLOW_DATA_IMPORT=true and --apply. Default mode only compares records.',
     );
-  const store = new DynamoStore(config);
+  const store = createStore(config);
   try {
     const missing = [];
     for (const record of backup.records) {
@@ -123,6 +123,6 @@ if (mode === 'export') {
       );
     }
   } finally {
-    store.close();
+    await store.close();
   }
 }

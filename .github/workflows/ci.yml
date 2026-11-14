@@ -12,6 +12,16 @@ jobs:
       dynamodb:
         image: amazon/dynamodb-local:3.1.0
         ports: [8000:8000]
+      postgres:
+        image: postgres:17.7-bookworm
+        env:
+          POSTGRES_USER: cch_test
+          POSTGRES_PASSWORD: LocalCiOnlyPassword123
+          POSTGRES_DB: postgres
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U cch_test -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v7
         with:
@@ -28,6 +38,9 @@ jobs:
       - run: npm run test:dynamodb
         env:
           DYNAMODB_ENDPOINT: http://127.0.0.1:8000
+      - run: npm run test:postgres
+        env:
+          POSTGRES_TEST_URL: postgresql://cch_test:LocalCiOnlyPassword123@127.0.0.1:5432/postgres
       - run: npm run test:e2e
       - run: node scripts/production-smoke.mjs
       - run: node dist/backend/scripts/load-test.js --dynamodb
@@ -42,17 +55,25 @@ jobs:
           path: |
             artifacts/load-*.json
             artifacts/poll-ui
+            artifacts/postgres
           retention-days: 7
       - run: bash -n scripts/deploy-ec2.sh
       - run: bash -n scripts/install-offline.sh
+      - run: bash -n scripts/bootstrap-plan-b.sh
+      - run: bash -n scripts/prepare-plan-b-release.sh
+      - run: node scripts/validate-plan-b.mjs
       - run: npm run infra:validate
       - run: node scripts/prepare-cloudfront-template.mjs --check
       - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - run: pip install -r infrastructure/requirements.txt
-      - run: cfn-lint infrastructure/hub.yaml infrastructure/single-ec2.yaml infrastructure/hub-cloudfront.json
+      - run: cfn-lint infrastructure/hub.yaml infrastructure/single-ec2.yaml infrastructure/hub-cloudfront.json infrastructure/hub-postgres.json
       - run: docker build -t cloud-coordination-hub:ci .
+      - name: Verify PostgreSQL maintenance files in runtime image
+        run: >-
+          docker run --rm --network none --read-only --entrypoint node cloud-coordination-hub:ci
+          -e "const fs=require('fs');for(const f of ['init-postgres','provision-postgres','create-user','migrate-database'])fs.accessSync('/app/dist/backend/scripts/'+f+'.js');fs.accessSync('/app/node_modules/pg/package.json')"
       - uses: actions/upload-artifact@v7
         with:
           name: application-build
