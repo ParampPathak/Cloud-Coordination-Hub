@@ -2,13 +2,13 @@
 Run under the authorized operator in standard CloudShell, never on application nodes.
 No IAM policies or custom application roles are created or modified by this script.
 """
-import argparse, hashlib, json, os, secrets, time
+import argparse, hashlib, json, os, secrets, time, subprocess, tarfile, gzip, shutil, urllib.request
 from pathlib import Path
 from urllib.parse import quote
 import boto3
 from botocore.config import Config
 
-p=argparse.ArgumentParser();p.add_argument('stage',choices=['preflight','stage','plan','execute','status','start']);p.add_argument('--release-directory',default='');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('stage',choices=['preflight','stage','plan','execute','status','start','management-bundle','configured']);p.add_argument('--release-directory',default='');args=p.parse_args()
 private=Path.home()/'cch-plan-b-private';private.mkdir(mode=0o700,exist_ok=True);os.chmod(private,0o700)
 statefile=private/'state.json'
 state=json.loads(statefile.read_text()) if statefile.exists() else {}
@@ -89,3 +89,28 @@ elif args.stage=='start':
   if x['ParameterKey'] in ['DesiredCapacity','MinCapacity']:x.pop('UsePreviousValue');x['ParameterValue']='2'
  client('cloudformation').update_stack(StackName=state['stackName'],UsePreviousTemplate=True,Parameters=params)
  print('Requested two private application instances; verify actual target readiness.')
+
+elif args.stage=='management-bundle':
+ outputs=state.get('outputs',{})
+ if not outputs.get('DatabaseHost') or not outputs.get('ApplicationUrl'):raise SystemExit('Wait for stack completion and run status first.')
+ raw=private/'management.tar';compressed=private/'management.tgz'
+ with raw.open('wb') as stream:
+  subprocess.run(['docker','run','--rm','--network','none','--read-only','--entrypoint','tar','cloud-coordination-hub:release','-C','/app','-cf','-','package.json','node_modules','dist/backend'],stdout=stream,check=True)
+ with tarfile.open(raw,'a') as archive:archive.add('scripts/configure-plan-b-db.mjs',arcname='scripts/configure-plan-b-db.mjs')
+ with raw.open('rb') as source,gzip.open(compressed,'wb') as target:shutil.copyfileobj(source,target)
+ state['managementKey']='releases/'+digest(compressed)+'/management.tgz';state['managementSha']=digest(compressed)
+ s3=client('s3');s3.upload_file(str(compressed),state['bucket'],state['managementKey'],ExtraArgs={'ServerSideEncryption':'AES256'})
+ with urllib.request.urlopen('https://truststore.pki.rds.amazonaws.com/us-east-1/us-east-1-bundle.pem',timeout=30) as response:ca=response.read().decode()
+ state['caPem']=ca
+ host=outputs['DatabaseHost'];state['ownerUrl']='postgresql://cch_owner:'+quote(state['masterPassword'],safe='')+'@'+host+':5432/cloudhub';state['appUrl']='postgresql://cch_app:'+quote(state['appPassword'],safe='')+'@'+host+':5432/cloudhub'
+ state.setdefault('accounts',[{'email':'organizer@cch-demo.example.test','name':'Demo Organizer','role':'organizer','password':'Aa1'+secrets.token_urlsafe(20)},{'email':'attendee@cch-demo.example.test','name':'Demo Attendee','role':'user','password':'Aa1'+secrets.token_urlsafe(20)}])
+ setup={k:state[k] for k in ['ownerUrl','appUrl','appPassword','accounts']};setup.update({'caPem':ca,'applicationOrigin':outputs['ApplicationUrl']})
+ s3.put_object(Bucket=state['bucket'],Key='operator/private-setup.json',Body=json.dumps(setup).encode(),ServerSideEncryption='AES256')
+ (private/'demo-accounts.local.json').write_text(json.dumps({'url':outputs['ApplicationUrl'],'accounts':state['accounts']},indent=2));os.chmod(private/'demo-accounts.local.json',0o600)
+ save();print(json.dumps({'managementBundleStaged':True,'managementKey':state['managementKey'],'managementSha256':state['managementSha'],'ownerConfig':'operator-only prefix; app role explicitly denied','noCredentialsPrinted':True}))
+elif args.stage=='configured':
+ s3=client('s3');result=json.loads(s3.get_object(Bucket=state['bucket'],Key='operator/setup-result.json')['Body'].read())
+ if not result.get('success'):raise SystemExit('Private SQL setup is not successful; do not start app instances.')
+ runtime={'postgresUrl':state['appUrl'],'caPem':state['caPem']}
+ s3.put_object(Bucket=state['bucket'],Key=state['runtimeKey'],Body=json.dumps(runtime).encode(),ServerSideEncryption='AES256')
+ state['databaseConfigured']=True;save();print(json.dumps({'databaseSetupVerified':True,'runtimeConfigStaged':True,'organizerAndAttendeeReady':True,'noCredentialsPrinted':True}))
