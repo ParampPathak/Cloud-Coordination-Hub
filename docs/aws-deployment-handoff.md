@@ -4,7 +4,7 @@ Status: Plan A remains blocked; Plans B/C have permission-supported alternatives
 
 ## Plan B implementation update
 
-The user selected Plan B preparation only. PostgreSQL storage, local concurrency/TLS verification and a separate CloudFormation/bootstrap path are prepared; no AWS deployment was authorized or executed. Read [the preparation runbook](plan-b-preparation.md) before any new provisioning. The old 71fa096 software archive lacks PostgreSQL and is only a preserved fallback artifact. RDS ModifyDBInstance simulation is explicitly denied, so deletion-protection/cleanup must be resolved before spending. The protected template has not been weakened.
+The user selected Plan B preparation only. PostgreSQL storage, local concurrency/TLS verification and a separate CloudFormation/bootstrap path are prepared; no AWS deployment was authorized or executed. Read [the preparation runbook](plan-b-preparation.md) before any new provisioning. The old 71fa096 software archive lacks PostgreSQL and is only a preserved fallback artifact. RDS ModifyDBInstance simulation is explicitly denied, so deletion-protection/cleanup must be resolved before spending. The user explicitly chose to keep deletion protection enabled and arrange administrator-assisted cleanup. The protected template has not been weakened; do not ask again to disable it.
 
 ## Resume from verified evidence
 
