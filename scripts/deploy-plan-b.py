@@ -95,7 +95,7 @@ elif args.stage=='management-bundle':
  if not outputs.get('DatabaseHost') or not outputs.get('ApplicationUrl'):raise SystemExit('Wait for stack completion and run status first.')
  raw=private/'management.tar';compressed=private/'management.tgz'
  with raw.open('wb') as stream:
-  subprocess.run(['docker','run','--rm','--network','none','--read-only','--entrypoint','tar','cloud-coordination-hub:release','-C','/app','-cf','-','package.json','node_modules','dist/backend'],stdout=stream,check=True)
+  subprocess.run(['docker','run','--rm','--network','none','--read-only','--entrypoint','tar','cloud-coordination-hub:release','-C','/app','-cf','-','package.json','node_modules','dist/backend','-C','/usr/local','bin/node'],stdout=stream,check=True)
  with tarfile.open(raw,'a') as archive:archive.add('scripts/configure-plan-b-db.mjs',arcname='scripts/configure-plan-b-db.mjs')
  with raw.open('rb') as source,gzip.open(compressed,'wb') as target:shutil.copyfileobj(source,target)
  state['managementKey']='releases/'+digest(compressed)+'/management.tgz';state['managementSha']=digest(compressed)
