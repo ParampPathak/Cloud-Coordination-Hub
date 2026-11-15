@@ -1,0 +1,183 @@
+{
+  "observedAt": "2026-11-15T23:17:15.995422+00:00",
+  "origin": "https://dpryd7fgeqjpy.cloudfront.net",
+  "region": "us-east-1",
+  "stack": {
+    "name": "cch-plan-b-demo",
+    "status": "UPDATE_COMPLETE"
+  },
+  "vpcCidr": "10.43.0.0/16",
+  "subnets": [
+    {
+      "cidr": "10.43.11.0/24",
+      "availabilityZone": "us-east-1b",
+      "publicIpOnLaunch": false
+    },
+    {
+      "cidr": "10.43.10.0/24",
+      "availabilityZone": "us-east-1a",
+      "publicIpOnLaunch": false
+    }
+  ],
+  "applicationInstances": [
+    {
+      "availabilityZone": "us-east-1a",
+      "state": "running",
+      "hasPublicIp": false
+    },
+    {
+      "availabilityZone": "us-east-1b",
+      "state": "running",
+      "hasPublicIp": false
+    }
+  ],
+  "healthyTargets": 2,
+  "autoscaling": {
+    "MinSize": 2,
+    "DesiredCapacity": 2,
+    "MaxSize": 3
+  },
+  "albScheme": "internal",
+  "cloudfrontStatus": "Deployed",
+  "database": {
+    "DBInstanceStatus": "available",
+    "Engine": "postgres",
+    "EngineVersion": "17.7",
+    "DBInstanceClass": "db.t3.micro",
+    "MultiAZ": false,
+    "PubliclyAccessible": false,
+    "StorageEncrypted": true,
+    "DeletionProtection": false,
+    "AllocatedStorage": 20
+  },
+  "readiness": {
+    "statusCode": 200,
+    "body": {
+      "status": "ready",
+      "database": "PostgreSQL"
+    }
+  },
+  "cloudwatchAlarms": [
+    {
+      "metric": "CPUUtilization",
+      "state": "OK"
+    },
+    {
+      "metric": "FreeStorageSpace",
+      "state": "OK"
+    },
+    {
+      "metric": "UnHealthyHostCount",
+      "state": "OK"
+    }
+  ],
+  "nativeMetricsDatapoints": {
+    "ec2_cpu_node_0": 3,
+    "ec2_credits_node_1": 3,
+    "ec2_cpu_node_2": 3,
+    "ec2_credits_node_3": 3,
+    "alb_response_seconds": 14,
+    "alb_requests": 15,
+    "healthy_targets": 15,
+    "rds_cpu": 15,
+    "rds_freeable_memory_bytes": 15
+  },
+  "applicationLogStreaming": "Private S3 batches; no direct CloudWatch Logs streaming",
+  "testRequestsMatchedAcrossTwoApplicationHosts": [221, 220],
+  "featureVerification": {
+    "observedAt": "2026-11-15T22:42:35.840Z",
+    "checks": {
+      "postgresHttps": true,
+      "capacityAndWaitlist": true,
+      "duplicateRegistrationRejected": true,
+      "fifoPromotion": true,
+      "noDoubleBooking": true,
+      "rescheduleAndCancellation": true,
+      "nineGroupsAndCapacity": true,
+      "groupCsv": true,
+      "recordedVotes": true,
+      "concurrentDashboard": true,
+      "organizerAuthorization": true,
+      "logout": true
+    },
+    "requests": 44,
+    "serverErrors": 0,
+    "success": true
+  },
+  "load50": {
+    "observedAt": "2026-11-15T22:48:55.866Z",
+    "mode": "load50",
+    "elapsedMs": 9568,
+    "checks": {
+      "postgresHttps": true,
+      "concurrentLogins": 50,
+      "capacityAndWaitlist": true,
+      "duplicateRegistrationRejected": true,
+      "fifoPromotion": true,
+      "noDoubleBooking": true,
+      "rescheduleAndCancellation": true,
+      "nineGroupsAndCapacity": true,
+      "groupCsv": true,
+      "recordedVotes": true,
+      "concurrentDashboard": true,
+      "organizerAuthorization": true,
+      "logout": true
+    },
+    "requests": 441,
+    "succeeded": 373,
+    "expectedConflicts": 66,
+    "serverErrors": 0,
+    "latencyMs": {
+      "p50": 149,
+      "p95": 561,
+      "p99": 1040
+    },
+    "success": true
+  },
+  "expectedAuthorizationResponses": 2,
+  "unexpectedLoadFailures": 0,
+  "browserChecks": {
+    "observedAt": "2026-11-15T23:22:17.614Z",
+    "origin": "https://dpryd7fgeqjpy.cloudfront.net",
+    "organizerAndAttendeeSignInVerified": true,
+    "logoutVerified": true,
+    "sessionAfterRefreshVerified": true,
+    "waitlistJoinAndPromotionVerified": true,
+    "bookingReschedulingCancellationVerified": true,
+    "calendarDownloadVerified": true,
+    "groupSelectionTransferAndPersistenceVerified": true,
+    "pollVoteAndUpdatedResultsVerified": true,
+    "browserErrors": [],
+    "screenshots": 22
+  },
+  "screenshots": {
+    "count": 22,
+    "requirementsCovered": 19,
+    "keptLocal": true,
+    "browserOriginals": "JPEG",
+    "requestedExports": "PNG, no UI alterations"
+  },
+  "backupRestore": {
+    "observedAt": "2026-11-15T23:18:34.053Z",
+    "backupSha256": "5f67ec4bf8379d7de2cf2220b9e2bef9d42b5b90773b62bb50bd9b1664dada72",
+    "localOnly": true,
+    "awsModified": false,
+    "recordsRestored": 88,
+    "summaryVerified": true,
+    "exactRecordEquality": true,
+    "success": true
+  },
+  "failureInjectionPerformed": false,
+  "ec2MemoryMetricsAvailable": false,
+  "autoscalingMetricsCollectionEnabled": false,
+  "applicationCodeCommit": "185d53c82b979282d7752dccbed2a8dcf499f03e",
+  "deploymentToolingCommit": "790caf4253ba74bf23d42fa79203ce48974bdfcb",
+  "releaseSha256": "e56842a8d95c7f9ea2d5e32d7c789ae23c5e3a12dc8231f35b272ca8574e9b9e",
+  "labDisplay": {
+    "ready": true,
+    "remainingAtLastObservation": "01:08",
+    "usedUsdDisplayed": 0.1,
+    "budgetUsd": 20,
+    "billingMayLag": true
+  }
+}

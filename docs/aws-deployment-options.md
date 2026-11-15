@@ -1,3 +1,5 @@
+> Deployment update, 2026-11-15: Plan B has now been deployed and verified. See [the current handoff](aws-deployment-handoff.md) and [actual live verification](aws-live-verification.md). The preparation/audit below records earlier work; it does not supersede the current deployment status or the user-approved new-demo deletion-protection setting.
+
 # AWS deployment alternatives - evidence-based review
 
 Reviewed 13 November 2026, America/Chicago. Region: us-east-1. This was a read-only investigation: no IAM edits, role assumptions, billable provisioning, application-data changes, or presentation edits. EC2 launch checks used DryRun=True exclusively. Main and all existing deployment work were preserved.

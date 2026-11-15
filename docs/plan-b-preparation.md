@@ -1,3 +1,5 @@
+> Deployment update, 2026-11-15: Plan B has now been deployed and verified. See [the current handoff](aws-deployment-handoff.md) and [actual live verification](aws-live-verification.md). The preparation/audit below records earlier work; it does not supersede the current deployment status or the user-approved new-demo deletion-protection setting.
+
 # Plan B preparation and deployment gates
 
 Prepared November 13, 2026 (America/Chicago). **Application/storage implementation and local verification are prepared; AWS infrastructure is not deployed.** No billable resources, IAM changes, production data edits or presentation edits were performed.

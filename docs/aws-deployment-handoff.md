@@ -1,43 +1,47 @@
 # AWS deployment handoff
 
-Status: Plan A remains blocked; Plans B/C have permission-supported alternatives awaiting implementation and deployment approval. No final deployment is running in the inspected account. Region: us-east-1. Application release: 71fa096545f147c6ad5a7fdf1414163192c731da. The lab was started with explicit user approval and was left running; no End Lab action was performed.
+Verified on 2026-11-15: **Plan B is deployed and working** at <https://dpryd7fgeqjpy.cloudfront.net>. CloudFormation `cch-plan-b-demo` reports `UPDATE_COMPLETE` in `us-east-1`. Both application instances and ALB targets are healthy. Public HTTPS readiness returns HTTP 200 with `{"status":"ready","database":"PostgreSQL"}`.
 
-## Current deployment authorization
+This replaces the previous pending-deployment status. The older deployment was absent when the lab resumed; it was recreated from the saved release. No End Lab action was performed.
 
-The user now requests actual Plan B deployment and explicitly approved DeletionProtection=false only for the new empty demonstration DB, superseding the earlier keep-protection choice. Retain encryption, private networking, authentication and snapshot-on-deletion. Do not request that same authorization again. The prior administrator-cleanup prerequisite no longer applies to this new DB. Actual deployment/verification remains pending; respect the discussed $3 three-hour reserve and do not claim simulations are deployment.
+## Actual architecture
 
-## Plan B implementation update
+CloudFront default-certificate HTTPS → CloudFront VPC origin → internal ALB → two private `t3.micro` EC2 instances in `us-east-1a` and `us-east-1b` → private, encrypted PostgreSQL 17.7 RDS `db.t3.micro`, 20 GiB. Auto Scaling is configured **2/2/3**. The dedicated VPC is `10.43.0.0/16`; private subnets are `10.43.10.0/24` and `10.43.11.0/24`. EC2 instances have no public IPs or SSH ingress. Bootstrap uses the S3 gateway endpoint and the pinned standard Amazon Linux 2023 AMI, with no NAT gateway or custom AMI.
 
-The user selected Plan B preparation only. PostgreSQL storage, local concurrency/TLS verification and a separate CloudFormation/bootstrap path are prepared; no AWS deployment was authorized or executed. Read [the preparation runbook](plan-b-preparation.md) before any new provisioning. The old 71fa096 software archive lacks PostgreSQL and is only a preserved fallback artifact. RDS ModifyDBInstance simulation is explicitly denied, so deletion-protection/cleanup must be resolved before spending. The user explicitly chose to keep deletion protection enabled and arrange administrator-assisted cleanup. The protected template has not been weakened; do not ask again to disable it.
+RDS is **Single-AZ**. This is application-tier multi-AZ availability, not automatic database failover. PostgreSQL replaces the poster's DynamoDB architecture. Native CloudWatch monitoring is present; application logs are collected in private S3 batches, not streamed directly to CloudWatch Logs.
 
-## Resume from verified evidence
+The existing `myS3Role` instance profile and existing CloudFront VPC-origin service-linked role were reused. No application IAM permissions were expanded. For this newly created demo database only, the user approved deletion protection disabled; encryption, private networking, authentication, verified TLS to PostgreSQL, and snapshot-on-deletion remain enabled. This supersedes the old keep-protection/admin-cleanup instruction.
 
-Read [the deployment alternatives audit](aws-deployment-options.md), [the current preflight](aws-live-verification.md), [pending performance results](final-aws-performance.md), and [the optional HTTPS proposal](AWS_CLOUDFRONT_PROPOSAL.md). The original final stack is not deployed. Earlier public demo responses reported SQLite. The latest audit found its hostname no longer resolves; do not present it as a working link. Those historical responses never established a shared DynamoDB or two-instance deployment.
+## Verified behavior
 
-Confirm the active Console account with STS on every resumed/reset session. The exact account-specific administrator request is local and gitignored under artifacts/aws-admin-request/. Its three JSON files describe a project-specific EC2 trust policy, DynamoDB/log-stream access, and permission to pass the exact project role to EC2. They have not been applied. Do not broaden unrelated roles, bypass IAM, or supply temporary Console keys to EC2.
+- Live API checks passed for capacity limits, duplicate registrations, FIFO waitlist promotion, booking contention, rescheduling, cancellation, nine four-seat groups, CSV export, polls, authorization, and logout.
+- Real browser sign-in worked for organizer Alex Morgan and attendees Sam Rivera and Jordan Lee. Waitlists, cancellation/promotion, booking/rescheduling/cancellation, calendar invitation download, group selection/transfer, poll voting, organizer results, and persistence after refresh were exercised.
+- The bounded 50-user AWS test completed 441 requests with zero unexpected failures or server errors. API p50/p95/p99: **149/561/1040 ms**. All 441 request IDs matched application logs across both instances: 221 on one and 220 on the other.
+- All three CloudWatch alarms are OK, with actual EC2, ALB, and RDS datapoints. EC2 memory utilization and ASG metric collection are not enabled; ASG capacity was verified through the service API.
+- A private backup was restored into an isolated local PostgreSQL cluster: all **88 records** and summary totals matched exactly. AWS was unchanged by that restore check.
 
-For exact Plan A, resolve the DynamoDB role/profile gap before provisioning. Plans B/C can instead use the existing EC2-trusted myS3Role, subject to project-use approval, with the documented Amazon-owned AL2023/S3 private bootstrap. A paid custom-AMI builder is not required by that design; actual bootstrap still needs verification. Recheck time/budget, review actual parameters and change set, and obtain explicit spending and CloudFront architecture approval before executing. Preserve the Academy-managed stack and unrelated resources.
+See [live verification](aws-live-verification.md), [measured performance](final-aws-performance.md), [recovery procedure](plan-b-recovery.md), and [sanitized evidence](evidence/plan-b-aws-live.json).
 
-## Release preparation
+## Private local deliverables
 
-A Node 24 production image was built and its isolated packaging checks passed in CloudShell. The image tar/checksum/installer were prepared under /tmp/cch-release-bundle in that CloudShell environment. The offline release was also downloaded and verified outside AWS under artifacts/aws-release/ in the local Cloud Computing workspace. Compressed archive SHA-256: aa527045099026e5cb45d7e3d29b727fd84978b170dd7f26aadd2878f85598d5. Verify this checksum before reuse. Temporary CloudShell paths alone are not reset-safe. The local aws-preflight scripts in the Cloud Computing workspace preserve the read-only recheck and build/check procedures. Do not mistake the isolated SQLite packaging fixture for production storage.
+Under `C:\Users\Geo\Documents\ChatGPT\Cloud Computing\artifacts\`:
 
-## Accounts and feature verification
+- `cch-final-demo-accounts.local.json`: seven fictional demonstration accounts, including the organizer and four named attendees. Passwords must stay private.
+- `presentation-screenshots/manifest.md`: 22 real captures covering all 19 requested screenshot requirements for slides 3–6 of the original screenshot brief. PNG exports and untouched browser JPEG originals are separate from the PowerPoint. Later nine-slide layouts can reuse these feature images.
+- `plan-b-deployment/private-recovery-2026-11-15/`: private final backup, archived disposable test data, raw AWS/monitoring evidence, and accounts.
+- `plan-b-deployment/backup-restore-verification.json`: successful restore verification.
+- `aws-release/cch-plan-b-release-185d53c.tgz`: reset-safe software archive.
 
-Provision one organizer and one attendee using scripts/create-user.ts or its built trusted CLI, after pointing it at the selected verified production database. Generate random credentials at provisioning time. The planned private destination is artifacts/cch-academy-accounts.local.json; no such final-stack credentials have been created by this work. Never print passwords to chat, command logs or Git. Use a separate isolated pool for performance tests.
+Do not commit these private backups, credentials, raw account-specific evidence, or screenshots. No PowerPoint or poster was modified.
 
-Verify the final architecture and both roles before events/waitlists, office hours, groups, polls, persistence and screenshots. All 19 requested presentation feature screenshots remain pending. Their local checklist is artifacts/presentation-screenshots/manifest.md. The sign-in capture is preliminary UI evidence only. Keep the reference PowerPoint and poster unchanged.
+## Demonstration starting state
 
-## Outstanding work
+`Final presentation dry run` has capacity two, with Jordan and Taylor confirmed. Sam is available to join the waitlist. `Cloud project groups` has nine empty four-seat groups, so Jordan can join Group 5 live. Eight 15-minute office-hour slots are available from 2–4 PM on November 19 in Engineering Building, Room 108. A separate sample anonymous poll contains three demonstration votes; the actual live-demo poll title is available for creation. Disposable performance users and resources were archived and removed after testing.
 
-- Select and approve the architecture: Plan A needs a new approved scoped DynamoDB profile/PassRole; B/C use existing-role alternatives with disclosed differences.
-- Implement and verify the Amazon-owned AL2023/S3 bootstrap and review actual resource/cost parameters.
-- Deploy and verify the selected architecture; retain the full DynamoDB template as the exact-poster target.
-- Secure account provisioning and browser feature tests.
-- A separately guarded, explicitly authorized AWS 50-user runner and measurements.
-- Verified private backup outside the Sandbox and separately authorized controlled failure test.
-- Feature screenshots, manifest updates and final evidence.
+## Release and limits
 
-Do not claim completion, final-stack availability, working demonstration credentials, measured AWS capacity or successful failover until those results are observed.
+Application code: `185d53c82b979282d7752dccbed2a8dcf499f03e`. Deployment tooling before this evidence update: `790caf4253ba74bf23d42fa79203ce48974bdfcb`. Release SHA-256: `e56842a8d95c7f9ea2d5e32d7c789ae23c5e3a12dc8231f35b272ca8574e9b9e`.
 
-The role-creation blocker is now confirmed by actual requests, not simulations alone. Both the user-approved SDK attempt and the subsequently requested manual IAM Console attempt failed at iam:CreateRole. The Console stated that no identity-based policy allows that action. Stop retrying that denied operation with the same identity. Exact Plan A needs an administrator-supplied approved profile/PassRole; the subsequent read-only review also identified Plan B/C candidates using existing role permissions. See the alternatives audit rather than treating the custom-role denial as a blocker for every architecture. Private evidence and ready-to-send text are bundled locally in the Cloud Computing workspace at artifacts/aws-admin-request.zip.
+The bounded test is not a sustained-load or availability guarantee. No controlled instance-failure test was authorized or performed. Minor UI observations: confirmation messages persist across navigation/account changes until dismissed; appointment cards are not sorted chronologically. The core flows passed.
+
+The last lab display was Ready, 01:08 remaining, and $0.10 used of $20; displayed billing can lag. The approved deployment reserve was $3 for three hours. The estimated running floor is about $0.08/hour, excluding variable traffic, logs, backups, and possible RDS CPU surplus. ALB, RDS, and storage can continue charging while resources exist. Do not end the lab, delete resources, or expand spending automatically.
