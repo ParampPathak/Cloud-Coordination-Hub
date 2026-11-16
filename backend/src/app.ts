@@ -5,6 +5,7 @@ import {
 } from './scheduling.js';
 import { resourcePage, type Kind } from './pages.js';
 import { pollSchema } from './polls.js';
+import { createGuestSession } from './guests.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -134,6 +135,8 @@ export function createApp(config: Config, store: Store, logging = true) {
   app.get('/api/health', (_req, res) =>
     res.json({
       status: 'ok',
+      guestDemoEnabled: config.GUEST_DEMO_ENABLED === 'true',
+      guestSessionHours: config.GUEST_SESSION_HOURS,
       database: store.kind,
       deployment: config.DEPLOYMENT_MODE,
       https: config.APP_ORIGIN.startsWith('https:'),
@@ -212,6 +215,40 @@ export function createApp(config: Config, store: Store, logging = true) {
       skipSuccessfulRequests: true,
     }),
   );
+  app.post(
+    '/api/auth/guest',
+    rateLimit({
+      windowMs: 15 * 60_000,
+      limit: 120,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+      message: {
+        error:
+          'Too many classroom joins. Please wait or ask an organizer for help.',
+      },
+    }),
+  );
+  app.post('/api/auth/guest', async (req, res) => {
+    if (config.GUEST_DEMO_ENABLED !== 'true')
+      throw new HttpError(403, 'Classroom demo access is currently closed.');
+    const input = z
+      .object({ name: z.string().trim().min(1).max(80) })
+      .strict()
+      .parse(req.body);
+    const result = await createGuestSession(
+      store,
+      input.name,
+      config.GUEST_SESSION_HOURS,
+      config.GUEST_DAILY_LIMIT,
+    );
+    res
+      .status(201)
+      .cookie('hub_session', result.token, {
+        ...cookieOptions,
+        maxAge: config.GUEST_SESSION_HOURS * 60 * 60 * 1000,
+      })
+      .json(result.user);
+  });
   app.post('/api/auth/login', async (req, res) => {
     const input = credentials.parse(req.body);
     const result = await login(store, input.email, input.password);
@@ -225,7 +262,9 @@ export function createApp(config: Config, store: Store, logging = true) {
       .json({ success: true });
   });
   app.use('/api', async (req, res, next) => {
-    const user = await sessionUser(store, req.cookies.hub_session);
+    const user = await sessionUser(store, req.cookies.hub_session, {
+      guestEnabled: config.GUEST_DEMO_ENABLED === 'true',
+    });
     if (!user) return next(new HttpError(401, 'Sign in to continue.'));
     res.locals.user = user;
     next();

@@ -44,6 +44,10 @@ if parsed.scheme not in ['postgres','postgresql'] or not parsed.hostname or not 
 ca=config['caPem']
 if '-----BEGIN CERTIFICATE-----' not in ca: raise SystemExit('RDS CA certificate required')
 values={'NODE_ENV':'production','DEPLOYMENT_MODE':'aws-multi','TRUST_PROXY_HOPS':'2','HOST':'0.0.0.0','PORT':'3000','APP_ORIGIN':sys.argv[1],'DATABASE_DRIVER':'postgres','POSTGRES_URL':url,'POSTGRES_SSL':'verify-full','POSTGRES_CA_FILE':'/run/cch/rds-ca.pem','POSTGRES_POOL_MAX':'5','ALLOW_AWS':'true'}
+enabled=config.get('guestDemoEnabled',False)
+hours=config.get('guestSessionHours',24);daily=config.get('guestDailyLimit',500)
+if not isinstance(enabled,bool) or isinstance(hours,bool) or not isinstance(hours,int) or not 1<=hours<=168 or isinstance(daily,bool) or not isinstance(daily,int) or not 50<=daily<=10000: raise SystemExit('Invalid classroom runtime configuration')
+values.update({'GUEST_DEMO_ENABLED':'true' if enabled else 'false','GUEST_SESSION_HOURS':str(hours),'GUEST_DAILY_LIMIT':str(daily)})
 if any(any(c in value for c in ['\n','\r','\0']) for value in values.values()): raise SystemExit('Invalid runtime config')
 Path('/etc/cloud-hub/app.env').write_text(''.join(key+'='+value+'\n' for key,value in values.items()))
 os.chmod('/etc/cloud-hub/app.env',0o600)

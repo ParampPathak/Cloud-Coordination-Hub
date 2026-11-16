@@ -59,6 +59,7 @@ try {
       'tests/postgres.test.ts',
       'tests/postgres-contract.test.ts',
       'tests/coordination.test.ts',
+      'tests/guests.test.ts',
       '--no-file-parallelism',
       '--reporter=default',
       '--reporter=json',

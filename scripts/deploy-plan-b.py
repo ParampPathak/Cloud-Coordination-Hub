@@ -8,7 +8,7 @@ from urllib.parse import quote
 import boto3
 from botocore.config import Config
 
-p=argparse.ArgumentParser();p.add_argument('stage',choices=['preflight','stage','plan','execute','status','start','management-bundle','configured']);p.add_argument('--release-directory',default='');args=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('stage',choices=['preflight','stage','plan','execute','status','start','management-bundle','configured']);p.add_argument('--release-directory',default='');p.add_argument('--enable-classroom-demo',action='store_true');args=p.parse_args()
 private=Path.home()/'cch-plan-b-private';private.mkdir(mode=0o700,exist_ok=True);os.chmod(private,0o700)
 statefile=private/'state.json'
 state=json.loads(statefile.read_text()) if statefile.exists() else {}
@@ -111,6 +111,6 @@ elif args.stage=='management-bundle':
 elif args.stage=='configured':
  s3=client('s3');result=json.loads(s3.get_object(Bucket=state['bucket'],Key='operator/setup-result.json')['Body'].read())
  if not result.get('success'):raise SystemExit('Private SQL setup is not successful; do not start app instances.')
- runtime={'postgresUrl':state['appUrl'],'caPem':state['caPem']}
+ runtime={'postgresUrl':state['appUrl'],'caPem':state['caPem'],'guestDemoEnabled':args.enable_classroom_demo,'guestSessionHours':24,'guestDailyLimit':500}
  s3.put_object(Bucket=state['bucket'],Key=state['runtimeKey'],Body=json.dumps(runtime).encode(),ServerSideEncryption='AES256')
  state['databaseConfigured']=True;save();print(json.dumps({'databaseSetupVerified':True,'runtimeConfigStaged':True,'organizerAndAttendeeReady':True,'noCredentialsPrinted':True}))

@@ -6,7 +6,13 @@ import {
   createHash,
 } from 'node:crypto';
 import { promisify } from 'node:util';
-import type { StoredUser, User, Role } from '../../shared/types.js';
+import type {
+  AccountUser,
+  GuestIdentity,
+  StoredUser,
+  User,
+  Role,
+} from '../../shared/types.js';
 import type { Store } from './store.js';
 import { HttpError } from './service.js';
 const derive = promisify(scrypt);
@@ -23,7 +29,7 @@ export async function verifyPassword(password: string, encoded: string) {
   const stored = Buffer.from(hash, 'hex');
   return key.length === stored.length && timingSafeEqual(key, stored);
 }
-export function publicUser(user: StoredUser): User {
+export function publicUser(user: StoredUser): AccountUser {
   const { id, name, email, role } = user;
   return { id, name, email, role };
 }
@@ -52,7 +58,8 @@ export async function createUser(
   return publicUser(user);
 }
 interface Session {
-  email: string;
+  email?: string;
+  guestId?: string;
   expiresAt: number;
 }
 export function tokenKey(token: string) {
@@ -86,6 +93,7 @@ export async function login(store: Store, email: string, password: string) {
 export async function sessionUser(
   store: Store,
   token: unknown,
+  options: { guestEnabled?: boolean } = {},
 ): Promise<User | null> {
   if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
   const session = await store.get<Session>('session', tokenKey(token));
@@ -94,6 +102,30 @@ export async function sessionUser(
     await store.remove('session', tokenKey(token));
     return null;
   }
+  if (session.data.guestId) {
+    if (options.guestEnabled === false) return null;
+    const record = await store.get<GuestIdentity>(
+      'guest',
+      session.data.guestId,
+    );
+    const guest = record?.data;
+    if (
+      !guest ||
+      guest.guest !== true ||
+      guest.role !== 'user' ||
+      guest.disabled ||
+      guest.expiresAt <= Date.now() / 1000
+    )
+      return null;
+    return {
+      id: guest.id,
+      name: guest.name,
+      role: 'user',
+      guest: true,
+      sessionExpiresAt: session.data.expiresAt,
+    };
+  }
+  if (!session.data.email) return null;
   const user = await store.get<StoredUser>('user', session.data.email);
   return user ? publicUser(user.data) : null;
 }

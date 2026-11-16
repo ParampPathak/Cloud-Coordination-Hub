@@ -2102,3 +2102,24 @@ select {
 .check-label input {
   width: auto;
 }
+
+.classroom-access-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 1.5rem 0;
+}
+.classroom-access-options .button {
+  flex-basis: 100%;
+  justify-content: center;
+}
+.classroom-access-options .text-button {
+  flex: 1;
+  min-height: 44px;
+}
+.classroom-access-options [aria-pressed='true'] {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

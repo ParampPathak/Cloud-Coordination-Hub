@@ -1,11 +1,33 @@
 export type Role = 'organizer' | 'user' | 'admin';
-export interface User {
+export interface AccountUser {
   id: string;
   email: string;
   name: string;
   role: Role;
+  guest?: false;
+  sessionExpiresAt?: never;
 }
-export interface StoredUser extends User {
+export interface ClassroomGuestUser {
+  id: string;
+  name: string;
+  role: 'user';
+  guest: true;
+  email?: never;
+  sessionExpiresAt: number;
+}
+export type User = AccountUser | ClassroomGuestUser;
+export interface GuestIdentity {
+  id: string;
+  name: string;
+  role: 'user';
+  guest: true;
+  createdAt: string;
+  expiresAt: number;
+  sessionKey: string;
+  disabled?: boolean;
+}
+export interface StoredUser extends AccountUser {
+  email: string;
   passwordHash: string;
   createdAt: string;
 }

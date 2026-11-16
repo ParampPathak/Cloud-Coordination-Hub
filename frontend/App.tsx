@@ -9,7 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from 'react';
-import { NavLink, useLocation, Navigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate, Navigate } from 'react-router-dom';
 import {
   ArrowDownToLine,
   ArrowRight,
@@ -69,13 +69,18 @@ function Login({
   local,
   deploymentLabel,
   https,
+  guestEnabled,
+  guestSessionHours,
 }: {
+  guestEnabled: boolean;
+  guestSessionHours: number;
   onLogin: (user: User) => void;
   local: boolean;
   deploymentLabel?: string;
   https?: boolean;
 }) {
   const [register, setRegister] = useState(false);
+  const [guest, setGuest] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -88,6 +93,12 @@ function Login({
       password: data.get('password'),
     };
     try {
+      if (guest) {
+        onLogin(
+          await api<User>('/auth/guest', 'POST', { name: data.get('name') }),
+        );
+        return;
+      }
       if (register)
         await api('/auth/register', 'POST', {
           ...credentials,
@@ -139,40 +150,96 @@ function Login({
           <span className="dot" />{' '}
           {deploymentLabel ?? (local ? 'Local development' : 'Cloud workspace')}
         </span>
-        <h2>{register ? 'Join your workspace' : 'Welcome back'}</h2>
+        <nav className="classroom-access-options" aria-label="Access options">
+          <button
+            type="button"
+            className="button primary"
+            disabled={busy || !guestEnabled}
+            aria-pressed={guest}
+            onClick={() => {
+              setGuest(true);
+              setRegister(false);
+              setError('');
+            }}
+          >
+            Join Classroom Demo
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            aria-pressed={!guest && !register}
+            onClick={() => {
+              setGuest(false);
+              setRegister(false);
+              setError('');
+            }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            aria-pressed={register}
+            onClick={() => {
+              setGuest(false);
+              setRegister(true);
+              setError('');
+            }}
+          >
+            Create Account
+          </button>
+        </nav>
+        {!guestEnabled && (
+          <p className="muted">Classroom demo access is currently closed.</p>
+        )}
+        <h2>
+          {guest
+            ? 'Join the classroom'
+            : register
+              ? 'Join your workspace'
+              : 'Welcome back'}
+        </h2>
         <p className="muted">
-          {register
-            ? 'Create an attendee account to start coordinating.'
-            : 'Sign in to see what’s happening in your workspace.'}
+          {guest
+            ? `Enter a display name. No email or password needed. Your demo session lasts ${guestSessionHours} hours.`
+            : register
+              ? 'Create an attendee account to start coordinating.'
+              : 'Sign in to see what’s happening in your workspace.'}
         </p>
         <form onSubmit={submit}>
-          {register && (
+          {(register || guest) && (
             <label>
-              Your name
+              {guest ? 'Display name' : 'Your name'}
               <input name="name" maxLength={80} required autoComplete="name" />
             </label>
           )}
-          <label>
-            Email address
-            <input
-              type="email"
-              name="email"
-              required
-              autoComplete="username"
-              maxLength={254}
-            />
-          </label>
-          <label>
-            Password
-            <input
-              type="password"
-              name="password"
-              required
-              minLength={register ? 12 : 1}
-              maxLength={128}
-              autoComplete={register ? 'new-password' : 'current-password'}
-            />
-          </label>
+          {!guest && (
+            <>
+              <label>
+                Email address
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  autoComplete="username"
+                  maxLength={254}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  name="password"
+                  required
+                  minLength={register ? 12 : 1}
+                  maxLength={128}
+                  autoComplete={register ? 'new-password' : 'current-password'}
+                />
+              </label>
+            </>
+          )}
           {register && (
             <small className="muted">
               At least 12 characters, with uppercase, lowercase, and a number.
@@ -184,13 +251,20 @@ function Login({
             </p>
           )}
           <button className="button primary full" disabled={busy}>
-            {busy ? 'Please wait…' : register ? 'Create account' : 'Sign in'}
+            {busy
+              ? 'Please wait…'
+              : guest
+                ? 'Enter classroom'
+                : register
+                  ? 'Create account'
+                  : 'Sign in'}
             <ArrowRight size={17} />
           </button>
         </form>
         <button
           className="text-button"
           onClick={() => {
+            setGuest(false);
             setRegister(!register);
             setError('');
           }}
@@ -641,6 +715,9 @@ export default function App() {
     'local',
   );
   const [https, setHttps] = useState(false);
+  const [guestEnabled, setGuestEnabled] = useState(false);
+  const [guestSessionHours, setGuestSessionHours] = useState(24);
+  const navigate = useNavigate();
   const [database, setDatabase] = useState('Connecting…');
   const local = deployment === 'local';
   const deploymentLabel = {
@@ -688,10 +765,14 @@ export default function App() {
       database: string;
       deployment: 'local' | 'ec2' | 'aws-multi';
       https: boolean;
+      guestDemoEnabled?: boolean;
+      guestSessionHours?: number;
     }>('/health')
       .then((result) => {
         setDeployment(result.deployment);
         setHttps(result.https);
+        setGuestEnabled(result.guestDemoEnabled === true);
+        setGuestSessionHours(result.guestSessionHours ?? 24);
         setDatabase(result.database);
       })
       .catch(() => {});
@@ -794,6 +875,15 @@ export default function App() {
     }
   }, [user, path, cursor, search, filter, database]);
   useEffect(() => {
+    setSearch('');
+    setFilter('all');
+    setCursor(undefined);
+    setPreviousCursors([]);
+    setNextCursor(null);
+    setSnapshot(null);
+    setNotice('');
+  }, [path]);
+  useEffect(() => {
     reloadRef.current = reload;
   }, [reload]);
   useEffect(() => {
@@ -822,15 +912,6 @@ export default function App() {
       activeGate.cancel();
     };
   }, [user, reload]);
-  useEffect(() => {
-    setSearch('');
-    setFilter('all');
-    setCursor(undefined);
-    setPreviousCursors([]);
-    setNextCursor(null);
-    setSnapshot(null);
-    setNotice('');
-  }, [path]);
   async function act(
     endpoint: string,
     method: string,
@@ -910,12 +991,16 @@ export default function App() {
           local={local}
           deploymentLabel={deploymentLabel}
           https={https}
+          guestEnabled={guestEnabled}
+          guestSessionHours={guestSessionHours}
           onLogin={(u) => {
             gate.current.cancel();
             setSnapshot(null);
             setCursor(undefined);
             setPreviousCursors([]);
             setUser(u);
+            setNotice('');
+            if (u.guest) navigate('/dashboard', { replace: true });
             setError('');
           }}
         />
@@ -1010,8 +1095,8 @@ export default function App() {
             </div>
             <button
               className="icon-button"
-              title="Sign out"
-              aria-label="Sign out"
+              title={user.guest ? 'Exit Demo' : 'Sign out'}
+              aria-label={user.guest ? 'Exit Demo' : 'Sign out'}
               disabled={busy}
               onClick={async () => {
                 setBusy(true);
@@ -1019,6 +1104,7 @@ export default function App() {
                   await api('/auth/logout', 'POST');
                   setUser(null);
                   setSnapshot(null);
+                  setNotice('');
                 } catch (e) {
                   setError(errorMessage(e));
                 } finally {
@@ -1414,6 +1500,19 @@ export default function App() {
                       }}
                     />
                   )}
+                  {slots.length > 0 &&
+                    !nextCursor &&
+                    previousCursors.length === 0 &&
+                    slots.every(
+                      (slot) =>
+                        (slot.bookedCount ?? (slot.booking ? 1 : 0)) >=
+                        (slot.capacity ?? 1),
+                    ) && (
+                      <p className="info-strip" role="status">
+                        All appointments are currently booked. Check back for
+                        cancellations.
+                      </p>
+                    )}
                   <div className="slot-list">
                     {slots.map((slot) => (
                       <SlotCard
@@ -1445,7 +1544,20 @@ export default function App() {
                         .join('')}
                     </span>
                     <h2>{user.name}</h2>
-                    <p className="muted">{user.email}</p>
+                    <p className="muted">
+                      {user.guest
+                        ? 'Classroom guest · temporary attendee'
+                        : user.email}
+                    </p>
+                    {user.guest && user.sessionExpiresAt && (
+                      <p className="muted">
+                        Session ends{' '}
+                        {dateTime(
+                          new Date(user.sessionExpiresAt * 1000).toISOString(),
+                        )}
+                        . Participation records stay saved.
+                      </p>
+                    )}
                     <span className="badge green">
                       {user.role === 'admin'
                         ? 'Administrator'
