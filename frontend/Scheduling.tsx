@@ -1,7 +1,7 @@
 import { downloadAppointment } from './calendar';
 import { useState, useRef, useEffect, type FormEvent } from 'react';
 import type { ScheduleInput, Slot, User } from '../shared/types';
-import { api } from './api';
+import { useScopedApi } from './workspace-api';
 
 type Action = (
   path: string,
@@ -19,6 +19,7 @@ const format = (date: string, timeZone?: string) =>
     timeZoneName: 'short',
   });
 export function OfficeHoursBuilder({ onSaved }: { onSaved: () => void }) {
+  const api = useScopedApi();
   const [open, setOpen] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
@@ -309,13 +310,16 @@ export function SlotCard({
   act: Action;
   slots?: Slot[];
 }) {
+  const api = useScopedApi();
   const [reason, setReason] = useState(''),
     [destination, setDestination] = useState('');
   const mine = Boolean(
     slot.bookings?.some((b) => b.userId === user.id) ||
     slot.booking?.userId === user.id,
   );
-  const owns = slot.organizerId === user.id;
+  const owns = user.workspaceRole
+    ? user.workspaceRole !== 'attendee'
+    : slot.organizerId === user.id;
   const count = slot.bookedCount ?? (slot.booking ? 1 : 0),
     capacity = slot.capacity ?? 1;
   const past = Date.parse(slot.startsAt) <= Date.now();

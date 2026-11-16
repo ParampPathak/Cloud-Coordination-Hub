@@ -10,6 +10,7 @@ export interface ApiOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
   retries?: number;
+  workspaceId?: string;
 }
 const messages: Record<number, string> = {
   401: 'Your session has expired. Please sign in again.',
@@ -43,8 +44,12 @@ export async function api<T>(
         method,
         credentials: 'same-origin',
         signal: controller.signal,
-        headers:
-          body === undefined ? {} : { 'Content-Type': 'application/json' },
+        headers: {
+          ...(options.workspaceId
+            ? { 'X-Workspace-Id': options.workspaceId }
+            : {}),
+          ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       if (response.status === 204) return undefined as T;

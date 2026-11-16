@@ -138,10 +138,9 @@ export class PostgresStore implements Store {
                 : 0,
       );
       for (const write of ordered) {
-        const { kind, id, data, expected } = write;
-        const json = serialize(data);
+        const { kind, id, data, expected, operation } = write;
         const prior = await client.query(
-          'SELECT data,version FROM cch.records WHERE kind=$1 AND id=$2 FOR UPDATE',
+          `SELECT data,version FROM cch.records WHERE kind=$1 AND id=$2 FOR ${operation === 'check' ? 'SHARE' : 'UPDATE'}`,
           [kind, id],
         );
         if (
@@ -152,22 +151,29 @@ export class PostgresStore implements Store {
           await client.query('ROLLBACK');
           return false;
         }
+        if (operation === 'check') continue;
+        const json = operation ? '' : serialize(data);
         const result =
-          expected === null
+          operation === 'delete'
             ? await client.query(
-                'INSERT INTO cch.records(kind,id,data,version) VALUES($1,$2,$3::jsonb,1) ON CONFLICT DO NOTHING',
-                [kind, id, json],
+                'DELETE FROM cch.records WHERE kind=$1 AND id=$2 AND version=$3',
+                [kind, id, expected],
               )
-            : await client.query(
-                'UPDATE cch.records SET data=$3::jsonb,version=version+1 WHERE kind=$1 AND id=$2 AND version=$4',
-                [kind, id, json, expected],
-              );
+            : expected === null
+              ? await client.query(
+                  'INSERT INTO cch.records(kind,id,data,version) VALUES($1,$2,$3::jsonb,1) ON CONFLICT DO NOTHING',
+                  [kind, id, json],
+                )
+              : await client.query(
+                  'UPDATE cch.records SET data=$3::jsonb,version=version+1 WHERE kind=$1 AND id=$2 AND version=$4',
+                  [kind, id, json, expected],
+                );
         if (result.rowCount !== 1) {
           await client.query('ROLLBACK');
           return false;
         }
         const before = contribution(kind, prior.rows[0]?.data),
-          after = contribution(kind, data);
+          after = contribution(kind, operation === 'delete' ? undefined : data);
         for (const key of Object.keys(delta) as (keyof Summary)[])
           delta[key] += after[key] - before[key];
       }

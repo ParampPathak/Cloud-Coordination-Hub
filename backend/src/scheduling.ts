@@ -10,6 +10,7 @@ import type {
 } from '../../shared/types.js';
 import type { Store, StoreWrite } from './store.js';
 import { HttpError } from './errors.js';
+import { managesResource } from './resource-permissions.js';
 
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
 export const scheduleSchema = z
@@ -61,7 +62,7 @@ interface Guard {
 }
 const active = (i: Interval) => Date.parse(i.endsAt) > Date.now();
 function manager(user: User, slot?: Slot) {
-  if (user.role !== 'organizer' || (slot && slot.organizerId !== user.id))
+  if (user.role !== 'organizer' || (slot && !managesResource(user, slot)))
     throw new HttpError(
       403,
       'Only the owning organizer can manage these appointments.',
@@ -184,10 +185,9 @@ function synchronize(slot: Slot) {
 }
 export function slotView(slot: Slot, user: User): Slot {
   const entries = bookings(slot);
-  const visible =
-    slot.organizerId === user.id
-      ? entries
-      : entries.filter((b) => b.userId === user.id);
+  const visible = managesResource(user, slot)
+    ? entries
+    : entries.filter((b) => b.userId === user.id);
   return {
     ...slot,
     capacity: slot.capacity ?? 1,
@@ -233,7 +233,7 @@ export class SchedulingService {
     // Compatibility bootstrap preserves all legacy bookings and intervals.
     const intervals =
       record?.data.intervals ??
-      (await this.store.list<Slot>('slot'))
+      (await (this.store.legacySlots?.() ?? this.store.list<Slot>('slot')))
         .filter((s) =>
           kind === 'organizer-schedule'
             ? s.organizerId === userId
@@ -490,7 +490,7 @@ export class SchedulingService {
       const record = await this.store.get<Slot>('slot', id);
       if (!record) throw new HttpError(404, 'Appointment was not found.');
       const slot = record.data;
-      const owns = user.role === 'organizer' && user.id === slot.organizerId;
+      const owns = managesResource(user, slot);
       if (participantId !== user.id && !owns)
         throw new HttpError(403, 'You can only cancel your own booking.');
       slot.bookings = bookings(slot);

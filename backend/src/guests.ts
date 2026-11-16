@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { setTimeout } from 'node:timers/promises';
 import { tokenKey } from './auth.js';
 import { HttpError } from './errors.js';
-import type { Store } from './store.js';
+import type { Store, StoreWrite } from './store.js';
 import type { GuestIdentity, User } from '../../shared/types.js';
 
 export async function createGuestSession(
@@ -10,6 +10,7 @@ export async function createGuestSession(
   name: string,
   hours: number,
   dailyLimit: number,
+  membership?: (guest: { id: string; name: string }) => Promise<StoreWrite[]>,
 ) {
   name = name.trim();
   if (!name || name.length > 80)
@@ -55,6 +56,7 @@ export async function createGuestSession(
           data: { guestId: id, expiresAt },
           expected: null,
         },
+        ...(membership ? await membership({ id, name }) : []),
       ])
     ) {
       const user: User = {

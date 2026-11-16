@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { api } from './api';
+import { useScopedApi, useWorkspaceExport } from './workspace-api';
 import type { EventView, GroupView, Registration, User } from '../shared/types';
 
 export function Groups({
@@ -11,13 +11,17 @@ export function Groups({
   user: User;
   onChanged: () => void;
 }) {
+  const api = useScopedApi();
+  const download = useWorkspaceExport();
   const [open, setOpen] = useState(false),
     [groups, setGroups] = useState<GroupView[]>([]),
     [rows, setRows] = useState<Registration[]>([]);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
-  const owns = event.organizerId === user.id;
+  const owns = user.workspaceRole
+    ? user.workspaceRole !== 'attendee'
+    : event.organizerId === user.id;
   const gridId = useId();
   async function load() {
     setBusy(true);
@@ -165,7 +169,7 @@ export function Groups({
                 ))}
               <a
                 className="button secondary"
-                href={`/api/events/${event.id}/groups.csv`}
+                href={download(`/events/${event.id}/groups.csv`)}
               >
                 Export group CSV
               </a>

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { api } from './api';
+import { useScopedApi } from './workspace-api';
 import type { PollInput, PollView } from '../shared/types';
 
 const MAX_OPTIONS = 8;
@@ -14,6 +14,7 @@ export function PollForm({
   onSaved: () => void;
   onCancel?: () => void;
 }) {
+  const api = useScopedApi();
   const config = poll?.settings;
   const prefix = useId();
   const nextKey = useRef(poll?.options.length ?? 2);

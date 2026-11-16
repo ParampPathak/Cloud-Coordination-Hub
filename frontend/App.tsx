@@ -4,6 +4,7 @@ import { PollCard, PollForm } from './Polls';
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type FormEvent,
@@ -30,7 +31,16 @@ import {
   X,
 } from 'lucide-react';
 import { RefreshGate } from './refresh';
-import { api, ApiError } from './api';
+import { api as globalApi, ApiError } from './api';
+import {
+  ScopedApi,
+  WorkspaceId,
+  useScopedApi,
+  useWorkspaceExport,
+} from './workspace-api';
+import { WorkspaceControls } from './WorkspaceControls';
+import { Modal } from './Modal';
+import type { WorkspaceView } from '../shared/workspaces';
 import type { EventView, Registration, Snapshot, User } from '../shared/types';
 
 const dateTime = (date: string) =>
@@ -71,16 +81,23 @@ function Login({
   https,
   guestEnabled,
   guestSessionHours,
+  workspaceInvitations,
 }: {
   guestEnabled: boolean;
   guestSessionHours: number;
-  onLogin: (user: User) => void;
+  workspaceInvitations: boolean;
+  onLogin: (user: User, workspaceId?: string) => void;
   local: boolean;
   deploymentLabel?: string;
   https?: boolean;
 }) {
   const [register, setRegister] = useState(false);
   const [guest, setGuest] = useState(false);
+  const [preview, setPreview] = useState<{
+    id: string;
+    name: string;
+    confirmation: string;
+  } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -94,19 +111,38 @@ function Login({
     };
     try {
       if (guest) {
+        const name = data.get('name');
+        const code = data.get('workspaceCode');
+        if (workspaceInvitations && !preview) {
+          setPreview(
+            await globalApi('/auth/workspace-preview', 'POST', { code }),
+          );
+          return;
+        }
         onLogin(
-          await api<User>('/auth/guest', 'POST', { name: data.get('name') }),
+          await globalApi<User>('/auth/guest', 'POST', {
+            name,
+            ...(workspaceInvitations && preview
+              ? {
+                  code,
+                  workspaceId: preview.id,
+                  confirmation: preview.confirmation,
+                }
+              : {}),
+          }),
+          preview?.id,
         );
         return;
       }
       if (register)
-        await api('/auth/register', 'POST', {
+        await globalApi('/auth/register', 'POST', {
           ...credentials,
           name: data.get('name'),
         });
-      onLogin(await api<User>('/auth/login', 'POST', credentials));
+      onLogin(await globalApi<User>('/auth/login', 'POST', credentials));
     } catch (e) {
       setError(errorMessage(e));
+      if (guest) setPreview(null);
     } finally {
       setBusy(false);
     }
@@ -171,6 +207,7 @@ function Login({
             aria-pressed={!guest && !register}
             onClick={() => {
               setGuest(false);
+              setPreview(null);
               setRegister(false);
               setError('');
             }}
@@ -184,6 +221,7 @@ function Login({
             aria-pressed={register}
             onClick={() => {
               setGuest(false);
+              setPreview(null);
               setRegister(true);
               setError('');
             }}
@@ -214,6 +252,26 @@ function Login({
               {guest ? 'Display name' : 'Your name'}
               <input name="name" maxLength={80} required autoComplete="name" />
             </label>
+          )}
+          {guest && workspaceInvitations && (
+            <>
+              <label>
+                Invitation code
+                <input
+                  name="workspaceCode"
+                  maxLength={64}
+                  required
+                  autoComplete="off"
+                  readOnly={busy}
+                  onChange={() => setPreview(null)}
+                />
+              </label>
+              {preview && (
+                <p role="status">
+                  Join <strong>{preview.name}</strong>?
+                </p>
+              )}
+            </>
           )}
           {!guest && (
             <>
@@ -254,7 +312,11 @@ function Login({
             {busy
               ? 'Please wait…'
               : guest
-                ? 'Enter classroom'
+                ? workspaceInvitations
+                  ? preview
+                    ? 'Join Workspace'
+                    : 'Find workspace'
+                  : 'Enter classroom'
                 : register
                   ? 'Create account'
                   : 'Sign in'}
@@ -265,6 +327,7 @@ function Login({
           className="text-button"
           onClick={() => {
             setGuest(false);
+            setPreview(null);
             setRegister(!register);
             setError('');
           }}
@@ -287,44 +350,6 @@ function Login({
   );
 }
 
-function Modal({
-  title,
-  className = '',
-  children,
-  onClose,
-}: {
-  title: string;
-  className?: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current!;
-    dialog.showModal();
-    return () => dialog.close();
-  }, []);
-  return (
-    <dialog
-      ref={ref}
-      className={`modal ${className}`}
-      onCancel={onClose}
-      aria-labelledby="modal-title"
-    >
-      <div className="modal-heading">
-        <h2 id="modal-title">{title}</h2>
-        <button
-          className="icon-button"
-          onClick={onClose}
-          aria-label="Close dialog"
-        >
-          <X size={20} />
-        </button>
-      </div>
-      {children}
-    </dialog>
-  );
-}
 function CreateForm({
   kind,
   event,
@@ -336,6 +361,7 @@ function CreateForm({
   onSaved: () => void;
   onClose: () => void;
 }) {
+  const api = useScopedApi();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const localDate = (iso?: string) => {
@@ -679,7 +705,9 @@ export function EventCard({
                 : 'Register'}
           {!event.registration && !ended && <ArrowRight size={16} />}
         </button>
-        {event.organizerId === user.id && (
+        {(user.workspaceRole
+          ? user.workspaceRole !== 'attendee'
+          : event.organizerId === user.id) && (
           <div className="organizer-actions">
             <button
               className="text-button"
@@ -708,23 +736,267 @@ function Empty({ title, text }: { title: string; text: string }) {
   );
 }
 
+type WorkspaceList = {
+  enabled: boolean;
+  canCreate: boolean;
+  items: WorkspaceView[];
+};
+const emptyWorkspaces: WorkspaceList = {
+  enabled: false,
+  canCreate: false,
+  items: [],
+};
+type Deployment = 'local' | 'ec2' | 'aws-multi';
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [checking, setChecking] = useState(true);
-  const [deployment, setDeployment] = useState<'local' | 'ec2' | 'aws-multi'>(
-    'local',
-  );
+  const [deployment, setDeployment] = useState<Deployment>('local');
   const [https, setHttps] = useState(false);
+  const [database, setDatabase] = useState('Connecting…');
   const [guestEnabled, setGuestEnabled] = useState(false);
   const [guestSessionHours, setGuestSessionHours] = useState(24);
+  const [workspaceInvitations, setWorkspaceInvitations] = useState(false);
+  const [inventory, setInventory] = useState<{
+    userId: string;
+    list: WorkspaceList;
+    selected?: string;
+  } | null>(null);
+  const [error, setError] = useState('');
+  const listGate = useRef(new RefreshGate());
   const navigate = useNavigate();
-  const [database, setDatabase] = useState('Connecting…');
   const local = deployment === 'local';
   const deploymentLabel = {
     local: 'Local development',
     ec2: 'Single-instance EC2',
     'aws-multi': 'Multi-instance AWS',
   }[deployment];
+  useEffect(() => {
+    const health = globalApi<{
+      database: string;
+      deployment: Deployment;
+      https: boolean;
+      guestDemoEnabled?: boolean;
+      guestSessionHours?: number;
+      workspaceInvitations?: boolean;
+    }>('/health')
+      .then((h) => {
+        setDeployment(h.deployment);
+        setHttps(h.https);
+        setDatabase(h.database);
+        setGuestEnabled(h.guestDemoEnabled === true);
+        setGuestSessionHours(h.guestSessionHours ?? 24);
+        setWorkspaceInvitations(h.workspaceInvitations === true);
+      })
+      .catch(() => {});
+    const session = globalApi<User>('/auth/me')
+      .then(setUser)
+      .catch((e) => {
+        if (!(e instanceof ApiError && e.status === 401))
+          setError(errorMessage(e));
+      });
+    void Promise.all([health, session]).finally(() => setChecking(false));
+  }, []);
+  const userId = user?.id;
+  const load = useCallback(
+    async (preferred?: string) => {
+      if (!userId || !workspaceInvitations) return;
+      const request = listGate.current.begin();
+      setInventory(null);
+      setError('');
+      try {
+        const list = await globalApi<WorkspaceList>(
+          '/workspaces',
+          'GET',
+          undefined,
+          { signal: request.signal },
+        );
+        if (!request.current()) return;
+        const remembered =
+          preferred ?? localStorage.getItem('cch-workspace:' + userId);
+        const selected =
+          list.items.find((w) => w.id === remembered)?.id ??
+          list.items.find((w) => w.status === 'active')?.id ??
+          list.items[0]?.id;
+        if (selected) localStorage.setItem('cch-workspace:' + userId, selected);
+        setInventory({ userId, list, selected });
+      } catch (e) {
+        if (!request.current()) return;
+        if (e instanceof ApiError && e.status === 401) setUser(null);
+        else setError(errorMessage(e));
+      }
+    },
+    [userId, workspaceInvitations],
+  );
+  useEffect(() => {
+    const gate = listGate.current;
+    void load();
+    return () => gate.cancel();
+  }, [load]);
+  const active =
+    inventory?.userId === userId
+      ? inventory?.list.items.find((w) => w.id === inventory.selected)
+      : undefined;
+  const currentScope = useRef<{ userId?: string; workspaceId?: string }>({});
+  currentScope.current = { userId, workspaceId: active?.id };
+  const onLogout = useCallback(() => setUser(null), []);
+  const scopedApi = useMemo<typeof globalApi>(
+    () => async (path, method, body, options) => {
+      try {
+        return await globalApi(path, method, body, {
+          ...options,
+          workspaceId: active?.id,
+        });
+      } catch (e) {
+        if (
+          active &&
+          currentScope.current.userId === userId &&
+          currentScope.current.workspaceId === active.id &&
+          e instanceof ApiError &&
+          e.status === 403 &&
+          e.message === 'Workspace is unavailable.'
+        )
+          void load();
+        throw e;
+      }
+    },
+    [active, load, userId],
+  );
+  const scopedUser = useMemo<User | null>(() => {
+    if (!user || !active) return user;
+    return user.guest
+      ? { ...user, workspaceRole: 'attendee' }
+      : {
+          ...user,
+          workspaceRole: active.role,
+          role: active.role === 'attendee' ? 'user' : 'organizer',
+        };
+  }, [user, active]);
+  if (checking)
+    return (
+      <div className="page-loading" role="status">
+        <Cloud /> Opening your workspace…
+      </div>
+    );
+  if (!user || !scopedUser)
+    return (
+      <>
+        <Login
+          local={local}
+          deploymentLabel={deploymentLabel}
+          https={https}
+          guestEnabled={guestEnabled}
+          guestSessionHours={guestSessionHours}
+          workspaceInvitations={workspaceInvitations}
+          onLogin={(account, workspaceId) => {
+            setError('');
+            setInventory(null);
+            if (workspaceId)
+              localStorage.setItem('cch-workspace:' + account.id, workspaceId);
+            setUser(account);
+            if (account.guest) navigate('/dashboard', { replace: true });
+          }}
+        />
+        {error && (
+          <div className="connection-error" role="alert">
+            {error}
+          </div>
+        )}
+      </>
+    );
+  if (workspaceInvitations && inventory?.userId !== userId)
+    return (
+      <main className="workspace-selection">
+        <Brand />
+        {error ? (
+          <div role="alert" className="alert error">
+            {error}{' '}
+            <button className="button secondary" onClick={() => void load()}>
+              Try again
+            </button>
+          </div>
+        ) : (
+          <p role="status">Loading workspaces…</p>
+        )}
+      </main>
+    );
+  const list = inventory?.list ?? emptyWorkspaces;
+  const controls = list.enabled ? (
+    <WorkspaceControls
+      items={list.items}
+      active={active}
+      userId={user.id}
+      canCreate={list.canCreate}
+      onChange={(id) => void load(id)}
+    />
+  ) : undefined;
+  if (list.enabled && !active)
+    return (
+      <main className="workspace-selection">
+        <Brand />
+        <h1>Choose a workspace</h1>
+        <p className="muted">
+          Use an invitation code to join a private workspace.
+        </p>
+        {controls}
+        <button
+          className="button secondary"
+          onClick={async () => {
+            try {
+              await globalApi('/auth/logout', 'POST');
+              setUser(null);
+            } catch (e) {
+              setError(errorMessage(e));
+            }
+          }}
+        >
+          {user.guest ? 'Exit Demo' : 'Sign out'}
+        </button>
+        {error && (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        )}
+      </main>
+    );
+  return (
+    <WorkspaceId.Provider value={active?.id}>
+      <ScopedApi.Provider value={scopedApi}>
+        <WorkspaceDashboard
+          key={user.id + ':' + (active?.id ?? 'legacy')}
+          user={scopedUser}
+          onLogout={onLogout}
+          deploymentLabel={deploymentLabel}
+          local={local}
+          database={database}
+          workspace={active}
+          workspaceControls={controls}
+        />
+      </ScopedApi.Provider>
+    </WorkspaceId.Provider>
+  );
+}
+
+function WorkspaceDashboard({
+  user,
+  onLogout,
+  deploymentLabel,
+  local,
+  database,
+  workspace,
+  workspaceControls,
+}: {
+  user: User;
+  onLogout: () => void;
+  deploymentLabel: string;
+  local: boolean;
+  database: string;
+  workspace?: WorkspaceView;
+  workspaceControls?: ReactNode;
+}) {
+  const api = useScopedApi();
+  const download = useWorkspaceExport();
+  const archived = workspace?.status === 'archived';
   const gate = useRef(new RefreshGate());
   const mutating = useRef(false);
   const failures = useRef(0);
@@ -760,30 +1032,6 @@ export default function App() {
   const reloadRef = useRef<() => Promise<void>>(async () => {});
   const path = useLocation().pathname;
   const page = nav.find((n) => n.path === path);
-  useEffect(() => {
-    void api<{
-      database: string;
-      deployment: 'local' | 'ec2' | 'aws-multi';
-      https: boolean;
-      guestDemoEnabled?: boolean;
-      guestSessionHours?: number;
-    }>('/health')
-      .then((result) => {
-        setDeployment(result.deployment);
-        setHttps(result.https);
-        setGuestEnabled(result.guestDemoEnabled === true);
-        setGuestSessionHours(result.guestSessionHours ?? 24);
-        setDatabase(result.database);
-      })
-      .catch(() => {});
-    api<User>('/auth/me')
-      .then(setUser)
-      .catch((e) => {
-        if (!(e instanceof ApiError && e.status === 401))
-          setError(errorMessage(e));
-      })
-      .finally(() => setChecking(false));
-  }, []);
   const reload = useCallback(async () => {
     if (!user) return;
     const request = gate.current.begin();
@@ -864,7 +1112,7 @@ export default function App() {
       failures.current++;
       if (e instanceof ApiError && e.status === 401) {
         gate.current.cancel();
-        setUser(null);
+        onLogout();
         setSnapshot(null);
         setError(errorMessage(e));
         return;
@@ -873,7 +1121,7 @@ export default function App() {
     } finally {
       if (request.current()) setPageLoading(false);
     }
-  }, [user, path, cursor, search, filter, database]);
+  }, [api, user, path, cursor, search, filter, database, onLogout]);
   useEffect(() => {
     setSearch('');
     setFilter('all');
@@ -918,7 +1166,7 @@ export default function App() {
     message: string,
     body?: unknown,
   ) {
-    if (mutating.current) return;
+    if (mutating.current || archived) return;
     const actor = user?.id;
     mutating.current = true;
     gate.current.cancel();
@@ -955,8 +1203,8 @@ export default function App() {
     mutating.current = true;
     setBusy(true);
     try {
-      await api('/auth/logout', 'POST');
-      setUser(null);
+      await globalApi('/auth/logout', 'POST');
+      onLogout();
       setSnapshot(null);
     } catch (e) {
       if (identity.current === actor) setError(errorMessage(e));
@@ -978,39 +1226,6 @@ export default function App() {
       setBusy(false);
     }
   }
-  if (checking)
-    return (
-      <div className="page-loading" role="status">
-        <Cloud /> Opening your workspace…
-      </div>
-    );
-  if (!user)
-    return (
-      <>
-        <Login
-          local={local}
-          deploymentLabel={deploymentLabel}
-          https={https}
-          guestEnabled={guestEnabled}
-          guestSessionHours={guestSessionHours}
-          onLogin={(u) => {
-            gate.current.cancel();
-            setSnapshot(null);
-            setCursor(undefined);
-            setPreviousCursors([]);
-            setUser(u);
-            setNotice('');
-            if (u.guest) navigate('/dashboard', { replace: true });
-            setError('');
-          }}
-        />
-        {error && (
-          <div className="connection-error" role="alert">
-            {error}
-          </div>
-        )}
-      </>
-    );
   if (!page) return <Navigate to="/dashboard" replace />;
   const events = snapshot?.events ?? [];
   const polls = snapshot?.polls ?? [];
@@ -1034,7 +1249,7 @@ export default function App() {
       key={event.id}
       event={event}
       user={user}
-      busy={busy}
+      busy={busy || archived}
       act={act}
       edit={() => setModal({ kind: 'event', event })}
       attendees={() => void showAttendees(event)}
@@ -1045,14 +1260,16 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <Brand />
-        <div className="workspace">
-          <span className="workspace-avatar">CC</span>
-          <div>
-            <strong>Project workspace</strong>
-            <span>Cloud Computing · Team</span>
+        {workspaceControls ?? (
+          <div className="workspace">
+            <span className="workspace-avatar">CC</span>
+            <div>
+              <strong>Project workspace</strong>
+              <span>Cloud Computing · Team</span>
+            </div>
+            <span className="workspace-dot" />
           </div>
-          <span className="workspace-dot" />
-        </div>
+        )}
         <span className="nav-label">WORKSPACE</span>
         <nav aria-label="Main navigation">
           {nav.map(({ path, label, Icon }) => (
@@ -1102,7 +1319,7 @@ export default function App() {
                 setBusy(true);
                 try {
                   await api('/auth/logout', 'POST');
-                  setUser(null);
+                  onLogout();
                   setSnapshot(null);
                   setNotice('');
                 } catch (e) {
@@ -1120,7 +1337,7 @@ export default function App() {
       <div className="main-shell">
         <header className="topbar">
           <div className="breadcrumb">
-            Workspace <span>/</span>
+            {workspace?.name ?? 'Workspace'} <span>/</span>
             <strong>{page.label}</strong>
           </div>
           <div className="topbar-right">
@@ -1140,6 +1357,12 @@ export default function App() {
           </div>
         </header>
         <main className="main-content">
+          {archived && (
+            <p className="alert success" role="status">
+              This workspace is archived. Restore it in Manage Workspaces to
+              resume participation.
+            </p>
+          )}
           <div className="page-heading">
             <div>
               <span className="eyebrow">YOUR SHARED SPACE</span>
@@ -1166,8 +1389,9 @@ export default function App() {
                         : 'Your identity and access in the project workspace.'}
               </p>
             </div>
-            {(user.role === 'organizer' ||
-              (user.role === 'admin' && path === '/polls')) &&
+            {!archived &&
+              (user.role === 'organizer' ||
+                (user.role === 'admin' && path === '/polls')) &&
               path !== '/account' && (
                 <button
                   className="button primary"
@@ -1492,7 +1716,7 @@ export default function App() {
                       saving.
                     </p>
                   </div>
-                  {user.role === 'organizer' && (
+                  {!archived && user.role === 'organizer' && (
                     <OfficeHoursBuilder
                       onSaved={() => {
                         setNotice('Office hours saved.');
@@ -1744,7 +1968,7 @@ export default function App() {
           )}
           <a
             className="button secondary export-link"
-            href={`/api/events/${attendees.event.id}/attendees.csv`}
+            href={download(`/events/${attendees.event.id}/attendees.csv`)}
           >
             <ArrowDownToLine size={16} />
             Export CSV

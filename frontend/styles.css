@@ -2123,3 +2123,153 @@ select {
   text-decoration: underline;
   text-underline-offset: 4px;
 }
+
+.workspace-control {
+  position: relative;
+  min-width: 0;
+}
+.workspace-trigger {
+  width: 100%;
+  text-align: left;
+}
+.workspace-trigger > svg {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+.workspace-trigger .workspace-avatar {
+  flex: 0 0 auto;
+}
+.workspace-label {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.workspace-label > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workspace-dropdown {
+  position: absolute;
+  z-index: 5;
+  top: 100%;
+  left: 0;
+  width: min(290px, calc(100vw - 32px));
+  max-height: min(55dvh, 460px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px #243b3420;
+}
+.workspace-dropdown h2 {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.workspace-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.workspace-option:hover,
+.workspace-option[aria-current] {
+  background: #eaf0e6;
+}
+.workspace-option svg {
+  flex: 0 0 auto;
+}
+.workspace-menu-actions,
+.workspace-manage-select {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+}
+.workspace-modal {
+  max-height: min(90dvh, 820px);
+}
+.workspace-manage-select {
+  margin: 0 0 20px;
+}
+.workspace-manage-select label,
+.workspace-code {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.workspace-code input {
+  padding: 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  min-width: 0;
+}
+.workspace-settings {
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+  margin-top: 16px;
+}
+.workspace-settings h3 {
+  margin: 0 0 8px;
+}
+.workspace-members {
+  max-height: 240px;
+  overflow: auto;
+  padding: 6px;
+}
+.workspace-members li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 0;
+  overflow-wrap: anywhere;
+}
+.workspace-delete,
+.workspace-code {
+  margin-top: 12px;
+}
+.button.danger {
+  color: #893b32;
+  background: #fbefed;
+  border: 1px solid #efd4ce;
+}
+.button.danger:hover:not(:disabled) {
+  background: #f4ded9;
+}
+.workspace-selection {
+  max-width: 440px;
+  padding: 20px;
+  margin: 45px auto;
+}
+.workspace-selection > * + * {
+  margin-top: 12px;
+}
+.breadcrumb {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 800px) {
+  .sidebar .workspace-control {
+    display: block;
+  }
+  .sidebar .workspace-trigger {
+    display: flex;
+    margin: 5px 0 9px;
+  }
+  .workspace-dropdown {
+    max-height: 48dvh;
+  }
+}

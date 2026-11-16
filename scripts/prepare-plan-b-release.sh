@@ -12,7 +12,7 @@ out="artifacts/plan-b-release-$commit"
 mkdir -p "$out"
 docker build --pull -t cloud-coordination-hub:release .
 # Inspect packaged maintenance entry points; building alone is not runtime proof.
-docker run --rm --network none --read-only --entrypoint node cloud-coordination-hub:release -e "const fs=require('fs');for(const f of ['init-postgres','provision-postgres','create-user','migrate-database','provision-classroom-organizers','cleanup-classroom-guests'])fs.accessSync('/app/dist/backend/scripts/'+f+'.js');fs.accessSync('/app/node_modules/pg/package.json')"
+docker run --rm --network none --read-only --entrypoint node cloud-coordination-hub:release -e "const fs=require('fs');for(const f of ['init-postgres','provision-postgres','create-user','migrate-database','provision-classroom-organizers','cleanup-classroom-guests','migrate-workspaces'])fs.accessSync('/app/dist/backend/scripts/'+f+'.js');fs.accessSync('/app/node_modules/pg/package.json')"
 docker save cloud-coordination-hub:release -o "$out/cloud-hub-image.tar"
 (cd "$out" && sha256sum cloud-hub-image.tar > cloud-hub-image.tar.sha256)
 printf '{"commit":"%s","purpose":"Plan B PostgreSQL; software only","builtAt":"%s"}\n' "$commit" "$(date -u +%FT%TZ)" > "$out/release.json"

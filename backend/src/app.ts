@@ -6,6 +6,15 @@ import {
 import { resourcePage, type Kind } from './pages.js';
 import { pollSchema } from './polls.js';
 import { createGuestSession } from './guests.js';
+import { Workspaces, workspaceConfig } from './workspaces.js';
+import {
+  inviteInput,
+  joinInput,
+  withInvitationLimit,
+  workspaceRoutes,
+} from './workspace-routes.js';
+import { WorkspaceStore } from './workspace-store.js';
+import { PROJECT_WORKSPACE_ID } from '../../shared/workspaces.js';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
@@ -132,9 +141,10 @@ export function createApp(config: Config, store: Store, logging = true) {
       );
     next();
   });
-  app.get('/api/health', (_req, res) =>
+  app.get('/api/health', async (_req, res) =>
     res.json({
       status: 'ok',
+      workspaceInvitations: Boolean(await workspaceConfig(store)),
       guestDemoEnabled: config.GUEST_DEMO_ENABLED === 'true',
       guestSessionHours: config.GUEST_SESSION_HOURS,
       database: store.kind,
@@ -145,6 +155,7 @@ export function createApp(config: Config, store: Store, logging = true) {
   app.get('/api/ready', async (_req, res) => {
     try {
       await store.ready();
+      await workspaceConfig(store);
       res.json({ status: 'ready', database: store.kind });
     } catch {
       res.status(503).json({ error: 'Database unavailable.' });
@@ -228,19 +239,59 @@ export function createApp(config: Config, store: Store, logging = true) {
       },
     }),
   );
+  app.post('/api/auth/workspace-preview', async (req, res) => {
+    if (config.GUEST_DEMO_ENABLED !== 'true')
+      throw new HttpError(403, 'Classroom demo access is currently closed.');
+    const { code } = inviteInput.parse(req.body);
+    const scope = await workspaceConfig(store);
+    if (!scope) throw new HttpError(503, 'Workspace migration is required.');
+    const workspaces = new Workspaces(store, scope.data);
+    const preview = await withInvitationLimit(store, req, () =>
+      workspaces.preview(code, 'guest'),
+    );
+    res.json(preview);
+  });
   app.post('/api/auth/guest', async (req, res) => {
     if (config.GUEST_DEMO_ENABLED !== 'true')
       throw new HttpError(403, 'Classroom demo access is currently closed.');
-    const input = z
+    const scope = await workspaceConfig(store);
+    const nameSchema = z
       .object({ name: z.string().trim().min(1).max(80) })
-      .strict()
-      .parse(req.body);
-    const result = await createGuestSession(
-      store,
-      input.name,
-      config.GUEST_SESSION_HOURS,
-      config.GUEST_DAILY_LIMIT,
-    );
+      .strict();
+    const admission = (
+      name: string,
+      membership?: Parameters<typeof createGuestSession>[4],
+    ) =>
+      createGuestSession(
+        store,
+        name,
+        config.GUEST_SESSION_HOURS,
+        config.GUEST_DAILY_LIMIT,
+        membership,
+      );
+    const result = scope
+      ? await withInvitationLimit(store, req, async () => {
+          const input = joinInput.extend(nameSchema.shape).parse(req.body);
+          const workspace = new Workspaces(store, scope.data);
+          workspace.confirm(
+            input.code,
+            input.workspaceId,
+            'guest',
+            input.confirmation,
+          );
+          return admission(
+            input.name,
+            async (guest) =>
+              (
+                await workspace.prepareJoin(
+                  input.code,
+                  input.workspaceId,
+                  guest,
+                )
+              ).writes,
+          );
+        })
+      : await admission(nameSchema.parse(req.body).name);
     res
       .status(201)
       .cookie('hub_session', result.token, {
@@ -282,7 +333,54 @@ export function createApp(config: Config, store: Store, logging = true) {
   const user = (res: express.Response) => res.locals.user as User;
   const id = (req: express.Request) => z.uuid().parse(req.params.id);
   app.get('/api/auth/me', (_req, res) => res.json(user(res)));
-  app.get('/api/summary', async (_req, res) => res.json(await store.summary()));
+  workspaceRoutes(app, store);
+  app.use('/api', async (req, res, next) => {
+    const scope = await workspaceConfig(store);
+    const supplied =
+      req.get('X-Workspace-Id') ??
+      (req.path.endsWith('.csv') ? req.query.workspace : undefined);
+    if (!scope) {
+      if (supplied !== undefined)
+        throw new HttpError(403, 'Workspace is unavailable.');
+      return next();
+    }
+    const workspaceId =
+      supplied === undefined ? PROJECT_WORKSPACE_ID : z.uuid().parse(supplied);
+    const access = await new Workspaces(store, scope.data).access(
+      user(res),
+      workspaceId,
+    );
+    const archived = access.workspace.data.status === 'archived';
+    if (archived && !['GET', 'HEAD', 'OPTIONS'].includes(req.method))
+      throw new HttpError(409, 'Restore this workspace before making changes.');
+    const account = user(res);
+    res.locals.user = account.guest
+      ? { ...account, workspaceRole: 'attendee' }
+      : {
+          ...account,
+          workspaceRole: access.role,
+          role: access.role === 'attendee' ? 'user' : 'organizer',
+        };
+    const scoped = new WorkspaceStore(
+      store,
+      workspaceId,
+      access.checks,
+      archived,
+    );
+    res.locals.store = scoped;
+    res.locals.service = new HubService(scoped);
+    res.locals.scheduling = new SchedulingService(scoped);
+    next();
+  });
+  const scopedStore = (res: express.Response): Store =>
+    res.locals.store ?? store;
+  const hub = (res: express.Response): HubService =>
+    res.locals.service ?? service;
+  const scheduler = (res: express.Response): SchedulingService =>
+    res.locals.scheduling ?? scheduling;
+  app.get('/api/summary', async (_req, res) =>
+    res.json(await scopedStore(res).summary()),
+  );
   for (const [path, kind] of Object.entries({
     events: 'event',
     polls: 'poll',
@@ -300,10 +398,15 @@ export function createApp(config: Config, store: Store, logging = true) {
         })
         .strict()
         .parse(req.query);
-      const page = await resourcePage(store, user(res), kind as Kind, {
-        ...query,
-        descending: query.descending === 'true',
-      });
+      const page = await resourcePage(
+        scopedStore(res),
+        user(res),
+        kind as Kind,
+        {
+          ...query,
+          descending: query.descending === 'true',
+        },
+      );
       res.locals.queryExamined = page.examined;
       res.locals.queryMs = page.queryMs;
       res.setHeader('Server-Timing', `query;dur=${page.queryMs}`);
@@ -313,16 +416,16 @@ export function createApp(config: Config, store: Store, logging = true) {
   app.get('/api/snapshot', async (_req, res) => {
     res.setHeader('Deprecation', 'true');
     res.setHeader('Link', '</api/events>; rel="successor-version"');
-    res.json(await service.snapshot(user(res)));
+    res.json(await hub(res).snapshot(user(res)));
   });
   app.post('/api/events', async (req, res) =>
     res
       .status(201)
-      .json(await service.createEvent(user(res), eventSchema.parse(req.body))),
+      .json(await hub(res).createEvent(user(res), eventSchema.parse(req.body))),
   );
   app.put('/api/events/:id', async (req, res) =>
     res.json(
-      await service.editEvent(
+      await hub(res).editEvent(
         user(res),
         id(req),
         eventSchema.omit({ groupConfiguration: true }).parse(req.body),
@@ -330,16 +433,16 @@ export function createApp(config: Config, store: Store, logging = true) {
     ),
   );
   app.post('/api/events/:id/registrations', async (req, res) =>
-    res.status(201).json(await service.register(user(res), id(req))),
+    res.status(201).json(await hub(res).register(user(res), id(req))),
   );
   app.delete('/api/events/:id/registrations/me', async (req, res) =>
-    res.json(await service.cancel(user(res), id(req))),
+    res.json(await hub(res).cancel(user(res), id(req))),
   );
   app.get('/api/events/:id/attendees', async (req, res) =>
-    res.json(await service.attendees(user(res), id(req))),
+    res.json(await hub(res).attendees(user(res), id(req))),
   );
   app.get('/api/events/:id/attendees.csv', async (req, res) => {
-    const rows = await service.attendees(user(res), id(req));
+    const rows = await hub(res).attendees(user(res), id(req));
     const cell = (value: string) =>
       '"' +
       (/^[=+\-@\t\r]/.test(value) ? "'" : '') +
@@ -356,7 +459,7 @@ export function createApp(config: Config, store: Store, logging = true) {
       );
   });
   app.get('/api/events/:id/groups', async (req, res) =>
-    res.json(await service.groups(user(res), id(req))),
+    res.json(await hub(res).groups(user(res), id(req))),
   );
   app.put('/api/events/:id/groups/membership', async (req, res) => {
     const input = z
@@ -367,7 +470,7 @@ export function createApp(config: Config, store: Store, logging = true) {
       .strict()
       .parse(req.body);
     res.json(
-      await service.assignGroup(
+      await hub(res).assignGroup(
         user(res),
         id(req),
         input.groupId,
@@ -380,7 +483,7 @@ export function createApp(config: Config, store: Store, logging = true) {
       .strict()
       .parse(req.body);
     res.json(
-      await service.removeAttendee(
+      await hub(res).removeAttendee(
         user(res),
         id(req),
         z.string().min(1).max(100).parse(req.params.participantId),
@@ -389,8 +492,8 @@ export function createApp(config: Config, store: Store, logging = true) {
   });
   app.get('/api/events/:id/groups.csv', async (req, res) => {
     // attendees() performs the ownership check before a membership export.
-    await service.attendees(user(res), id(req));
-    const groups = await service.groups(user(res), id(req));
+    await hub(res).attendees(user(res), id(req));
+    const groups = await hub(res).groups(user(res), id(req));
     const cell = (value: string) =>
       `"${(/^[=+@\-\t\r\n]/.test(value) ? "'" + value : value).replaceAll('"', '""')}"`;
     const rows = [
@@ -405,11 +508,18 @@ export function createApp(config: Config, store: Store, logging = true) {
   app.post('/api/polls', async (req, res) =>
     res
       .status(201)
-      .json(await service.createPoll(user(res), pollSchema.parse(req.body))),
+      .json(await hub(res).createPoll(user(res), pollSchema.parse(req.body))),
   );
+  app.delete('/api/polls/:id', async (req, res) => {
+    z.object({ confirm: z.literal(true) })
+      .strict()
+      .parse(req.body);
+    await hub(res).deletePoll(user(res), id(req));
+    res.json({ success: true });
+  });
   app.post('/api/polls/:id/votes', async (req, res) =>
     res.json(
-      await service.vote(
+      await hub(res).vote(
         user(res),
         id(req),
         z.object({ option: z.number().int() }).strict().parse(req.body).option,
@@ -418,7 +528,7 @@ export function createApp(config: Config, store: Store, logging = true) {
   );
   app.put('/api/polls/:id', async (req, res) =>
     res.json(
-      await service.editPoll(user(res), id(req), pollSchema.parse(req.body)),
+      await hub(res).editPoll(user(res), id(req), pollSchema.parse(req.body)),
     ),
   );
   app.post('/api/polls/:id/selections', async (req, res) => {
@@ -426,17 +536,17 @@ export function createApp(config: Config, store: Store, logging = true) {
       .object({ optionIds: z.array(z.string().min(1).max(100)).min(1).max(8) })
       .strict()
       .parse(req.body);
-    res.json(await service.selectPoll(user(res), id(req), input.optionIds));
+    res.json(await hub(res).selectPoll(user(res), id(req), input.optionIds));
   });
   app.delete('/api/polls/:id/selections/me', async (req, res) =>
-    res.json(await service.cancelPoll(user(res), id(req))),
+    res.json(await hub(res).cancelPoll(user(res), id(req))),
   );
   app.post('/api/polls/:id/state', async (req, res) => {
     const input = z
       .object({ state: z.enum(['draft', 'open', 'closed', 'archived']) })
       .strict()
       .parse(req.body);
-    res.json(await service.pollState(user(res), id(req), input.state));
+    res.json(await hub(res).pollState(user(res), id(req), input.state));
   });
   app.get('/api/polls/:id/participants', async (req, res) => {
     const query = z
@@ -451,14 +561,14 @@ export function createApp(config: Config, store: Store, logging = true) {
       })
       .strict()
       .parse(req.query);
-    res.json(await service.pollParticipants(user(res), id(req), query));
+    res.json(await hub(res).pollParticipants(user(res), id(req), query));
   });
   app.delete('/api/polls/:id/participants/:participantId', async (req, res) => {
     z.object({ confirm: z.literal(true) })
       .strict()
       .parse(req.body);
     res.json(
-      await service.cancelPoll(
+      await hub(res).cancelPoll(
         user(res),
         id(req),
         z.string().min(1).max(100).parse(req.params.participantId),
@@ -467,16 +577,16 @@ export function createApp(config: Config, store: Store, logging = true) {
     );
   });
   app.post('/api/polls/:id/close', async (req, res) =>
-    res.json(await service.closePoll(user(res), id(req))),
+    res.json(await hub(res).closePoll(user(res), id(req))),
   );
   app.post('/api/slots', async (req, res) =>
     res
       .status(201)
-      .json(await service.createSlot(user(res), slotSchema.parse(req.body))),
+      .json(await hub(res).createSlot(user(res), slotSchema.parse(req.body))),
   );
   app.post('/api/slots/:id/booking', async (req, res) =>
     res.json(
-      await service.bookSlot(
+      await hub(res).bookSlot(
         user(res),
         id(req),
         z
@@ -487,7 +597,7 @@ export function createApp(config: Config, store: Store, logging = true) {
     ),
   );
   app.delete('/api/slots/:id/booking', async (req, res) =>
-    res.json(await service.cancelSlot(user(res), id(req))),
+    res.json(await hub(res).cancelSlot(user(res), id(req))),
   );
   app.post('/api/schedules/preview', async (req, res) => {
     if (user(res).role !== 'organizer')
@@ -498,7 +608,7 @@ export function createApp(config: Config, store: Store, logging = true) {
     res
       .status(201)
       .json(
-        await scheduling.createSchedule(
+        await scheduler(res).createSchedule(
           user(res),
           scheduleSchema.parse(req.body),
         ),
@@ -506,7 +616,7 @@ export function createApp(config: Config, store: Store, logging = true) {
   );
   app.put('/api/slots/:id/block', async (req, res) => {
     const input = z.object({ blocked: z.boolean() }).strict().parse(req.body);
-    res.json(await scheduling.block(user(res), id(req), input.blocked));
+    res.json(await scheduler(res).block(user(res), id(req), input.blocked));
   });
   app.post('/api/slots/:id/reschedule', async (req, res) => {
     const input = z
@@ -517,7 +627,7 @@ export function createApp(config: Config, store: Store, logging = true) {
       .strict()
       .parse(req.body);
     res.json(
-      await scheduling.book(user(res), input.slotId, input.reason, id(req)),
+      await scheduler(res).book(user(res), input.slotId, input.reason, id(req)),
     );
   });
   app.delete('/api/slots/:id/bookings/:participantId', async (req, res) => {
@@ -525,7 +635,7 @@ export function createApp(config: Config, store: Store, logging = true) {
       .strict()
       .parse(req.body);
     res.json(
-      await scheduling.cancel(
+      await scheduler(res).cancel(
         user(res),
         id(req),
         z.string().min(1).max(100).parse(req.params.participantId),

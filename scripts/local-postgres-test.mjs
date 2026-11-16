@@ -60,6 +60,7 @@ try {
       'tests/postgres-contract.test.ts',
       'tests/coordination.test.ts',
       'tests/guests.test.ts',
+      'tests/workspaces.test.ts',
       '--no-file-parallelism',
       '--reporter=default',
       '--reporter=json',

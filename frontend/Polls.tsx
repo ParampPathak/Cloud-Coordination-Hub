@@ -2,7 +2,7 @@ import { PollForm } from './PollForm';
 export { PollForm } from './PollForm';
 import { ManagementTable } from './ManagementTable';
 import { useEffect, useState } from 'react';
-import { api } from './api';
+import { useScopedApi } from './workspace-api';
 import type { PollEntry, PollView, User } from '../shared/types';
 
 export function PollCard({
@@ -195,6 +195,7 @@ function PollManagement({
   busy: boolean;
   act: (path: string, method: string, message: string, body?: unknown) => void;
 }) {
+  const api = useScopedApi();
   const [search, setSearch] = useState(''),
     [option, setOption] = useState(''),
     [sort, setSort] = useState('date'),
@@ -238,7 +239,7 @@ function PollManagement({
     return () => {
       cancelled = true;
     };
-  }, [poll, search, option, sort, direction, status, page]);
+  }, [api, poll, search, option, sort, direction, status, page]);
   return (
     <section className="poll-management" aria-label="Poll management">
       <h4>Poll management</h4>
@@ -277,6 +278,22 @@ function PollManagement({
           onClick={() => setEditing(!editing)}
         >
           Edit settings and capacities
+        </button>
+        <button
+          className="button danger"
+          disabled={busy}
+          onClick={() => {
+            if (
+              window.confirm(
+                `Delete “${poll.question}”? This permanently removes its votes and results.`,
+              )
+            )
+              act(`/polls/${poll.id}`, 'DELETE', 'Poll deleted.', {
+                confirm: true,
+              });
+          }}
+        >
+          Delete poll
         </button>
       </div>
       {editing && (

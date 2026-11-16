@@ -18,6 +18,10 @@ export async function cleanupClassroomGuests(
   guestIds: string[],
   apply = false,
 ) {
+  if (apply && (await store.get('workspace-config', 'v1')))
+    throw new Error(
+      'Classroom cleanup is disabled after workspace migration. Revoke workspace membership to retain participation history.',
+    );
   if (
     !guestIds.length ||
     guestIds.length > 500 ||

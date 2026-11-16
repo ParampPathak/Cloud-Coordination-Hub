@@ -30,6 +30,7 @@ export async function resourcePage(
       JSON.stringify([
         user.id,
         user.role,
+        store.workspaceId,
         kind,
         query.search ?? '',
         query.filter ?? '',
@@ -83,8 +84,7 @@ export async function resourcePage(
       if (activity.actorId !== user.id && !owned) continue;
       const poll = await store.get<Poll>('poll', activity.resourceId);
       items.push(
-        poll &&
-          normalizePoll(poll.data).settings.anonymous &&
+        (!poll || normalizePoll(poll.data).settings.anonymous) &&
           [
             'Voted in poll',
             'Updated poll participation',

@@ -1,3 +1,5 @@
+import type { WorkspaceRole } from './workspaces.js';
+
 export type Role = 'organizer' | 'user' | 'admin';
 export interface AccountUser {
   id: string;
@@ -6,6 +8,7 @@ export interface AccountUser {
   role: Role;
   guest?: false;
   sessionExpiresAt?: never;
+  workspaceRole?: WorkspaceRole;
 }
 export interface ClassroomGuestUser {
   id: string;
@@ -14,6 +17,7 @@ export interface ClassroomGuestUser {
   guest: true;
   email?: never;
   sessionExpiresAt: number;
+  workspaceRole?: 'attendee';
 }
 export type User = AccountUser | ClassroomGuestUser;
 export interface GuestIdentity {

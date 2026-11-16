@@ -127,8 +127,10 @@ export function normalizePoll(
 }
 
 export const canManagePoll = (user: User, poll: Poll) =>
-  user.role === 'admin' ||
-  (user.role === 'organizer' && user.id === poll.organizerId);
+  user.workspaceRole
+    ? user.workspaceRole === 'owner' || user.workspaceRole === 'manager'
+    : user.role === 'admin' ||
+      (user.role === 'organizer' && user.id === poll.organizerId);
 export function managePoll(user: User, poll: Poll) {
   if (!canManagePoll(user, poll))
     throw new HttpError(403, 'Poll owner or administrator access is required.');

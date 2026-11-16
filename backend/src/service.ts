@@ -26,6 +26,7 @@ import type {
   Snapshot,
 } from '../../shared/types.js';
 import { HttpError } from './errors.js';
+import { managesResource } from './resource-permissions.js';
 export { HttpError } from './errors.js';
 const now = () => new Date().toISOString();
 export function organizer(user: User) {
@@ -34,7 +35,7 @@ export function organizer(user: User) {
 }
 function owner(user: User, entity: { organizerId: string }) {
   organizer(user);
-  if (user.id !== entity.organizerId)
+  if (!managesResource(user, entity))
     throw new HttpError(403, 'You can only manage your own resources.');
 }
 export class HubService {
@@ -117,6 +118,32 @@ export class HubService {
       await setTimeout(Math.min(5 * (attempt + 1), 60) + Math.random() * 10);
     }
     throw new HttpError(409, 'This resource is busy. Please try again.');
+  }
+  async deletePoll(user: User, id: string) {
+    if (user.role !== 'organizer' && user.role !== 'admin')
+      throw new HttpError(403, 'Organizer access is required.');
+    for (let attempt = 0; attempt < 32; attempt++) {
+      const poll = await this.store.get<Poll>('poll', id);
+      if (!poll) throw new HttpError(404, 'Poll was not found.');
+      managePoll(user, poll.data);
+      if (
+        await this.store.transact(
+          [
+            {
+              kind: 'poll',
+              id,
+              data: poll.data,
+              expected: poll.version,
+              operation: 'delete',
+            },
+          ],
+          this.activity(user, id, 'Deleted poll'),
+        )
+      )
+        return;
+      await setTimeout(5 + Math.random() * 15);
+    }
+    throw new HttpError(409, 'The poll changed. Refresh and try again.');
   }
   async createEvent(
     user: User,
@@ -668,7 +695,7 @@ export class HubService {
     if (!record) throw new HttpError(404, 'Event was not found.');
     const event = record.data;
     const authorized =
-      event.organizerId === user.id ||
+      managesResource(user, event) ||
       event.registrations.some(
         (r) => r.userId === user.id && r.status === 'confirmed',
       );
@@ -696,8 +723,7 @@ export class HubService {
       user,
       'Updated group membership',
       (event) => {
-        const manages =
-          event.organizerId === user.id && user.role === 'organizer';
+        const manages = managesResource(user, event);
         if (
           !manages &&
           (participantId !== user.id ||
@@ -774,9 +800,9 @@ export class HubService {
         .page<Activity>('activity', 50, undefined, true)
         .then((page) => page.items),
     ]);
-    const anonymousPolls = new Set(
+    const identifiedPolls = new Set(
       polls
-        .filter((poll) => normalizePoll(poll).settings.anonymous)
+        .filter((poll) => !normalizePoll(poll).settings.anonymous)
         .map((poll) => poll.id),
     );
     const owned = new Set(
@@ -804,7 +830,7 @@ export class HubService {
         .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
         .slice(0, 12)
         .map((activity) =>
-          anonymousPolls.has(activity.resourceId) &&
+          !identifiedPolls.has(activity.resourceId) &&
           [
             'Voted in poll',
             'Updated poll participation',

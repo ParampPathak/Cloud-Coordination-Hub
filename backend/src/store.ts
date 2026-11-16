@@ -13,7 +13,7 @@ import {
   DeleteCommand,
   PutCommand,
 } from '@aws-sdk/lib-dynamodb';
-import type { Activity } from '../../shared/types.js';
+import type { Activity, Slot } from '../../shared/types.js';
 import type { Config } from './config.js';
 import { normalizePoll } from './polls.js';
 import type { Poll } from '../../shared/types.js';
@@ -29,6 +29,8 @@ export interface Page<T> {
 }
 export interface Store {
   kind: string;
+  readonly workspaceId?: string;
+  legacySlots?(): Promise<Slot[]>;
   summary(): Promise<Summary>;
   page<T>(
     kind: string,
@@ -55,6 +57,7 @@ export interface StoreWrite {
   id: string;
   data: unknown;
   expected: number | null;
+  operation?: 'check' | 'delete';
 }
 export function validateWrites(writes: StoreWrite[], activity?: Activity) {
   if (
@@ -68,8 +71,11 @@ export function validateWrites(writes: StoreWrite[], activity?: Activity) {
   const keys = writes.map((w) => JSON.stringify([w.kind, w.id]));
   if (new Set(keys).size !== keys.length)
     throw new Error('Duplicate transaction key.');
+  if (writes.some((w) => w.operation === 'delete' && w.expected === null))
+    throw new Error('Deletion requires an expected version.');
   let size = 0;
-  for (const w of writes) size += Buffer.byteLength(serialize(w.data)) + 1024;
+  for (const w of writes)
+    size += (w.operation ? 0 : Buffer.byteLength(serialize(w.data))) + 1024;
   if (size > 3_900_000) throw new Error('Transaction size limit reached.');
 }
 export function activityRecipients(writes: StoreWrite[], activity: Activity) {
@@ -281,32 +287,49 @@ export class SqliteStore implements Store {
             .data,
         ),
       ) as Summary;
-      for (const write of writes.filter((w) =>
-        ['event', 'poll'].includes(w.kind),
+      for (const write of writes.filter(
+        (w) => w.operation !== 'check' && ['event', 'poll'].includes(w.kind),
       )) {
         const row = this.db
           .prepare('SELECT data FROM records WHERE kind=? AND id=?')
           .get(write.kind, write.id);
         const prior = row ? { data: JSON.parse(String(row.data)) } : null;
         const before = contribution(write.kind, prior?.data),
-          after = contribution(write.kind, write.data);
+          after = contribution(
+            write.kind,
+            write.operation === 'delete' ? undefined : write.data,
+          );
         for (const key of Object.keys(counts) as (keyof Summary)[])
           counts[key] += after[key] - before[key];
       }
-      for (const { kind, id, data, expected } of writes) {
-        const json = serialize(data);
+      for (const { kind, id, data, expected, operation } of writes) {
+        if (operation === 'check') {
+          const row = this.db
+            .prepare('SELECT version FROM records WHERE kind=? AND id=?')
+            .get(kind, id);
+          if ((row ? Number(row.version) : null) === expected) continue;
+          this.db.exec('ROLLBACK');
+          return false;
+        }
+        const json = operation ? '' : serialize(data);
         const result =
-          expected === null
+          operation === 'delete'
             ? this.db
                 .prepare(
-                  'INSERT OR IGNORE INTO records(kind,id,data,version) VALUES (?,?,?,1)',
+                  'DELETE FROM records WHERE kind=? AND id=? AND version=?',
                 )
-                .run(kind, id, json)
-            : this.db
-                .prepare(
-                  'UPDATE records SET data=?,version=version+1 WHERE kind=? AND id=? AND version=?',
-                )
-                .run(json, kind, id, expected);
+                .run(kind, id, expected)
+            : expected === null
+              ? this.db
+                  .prepare(
+                    'INSERT OR IGNORE INTO records(kind,id,data,version) VALUES (?,?,?,1)',
+                  )
+                  .run(kind, id, json)
+              : this.db
+                  .prepare(
+                    'UPDATE records SET data=?,version=version+1 WHERE kind=? AND id=? AND version=?',
+                  )
+                  .run(json, kind, id, expected);
         if (Number(result.changes) === 0) {
           this.db.exec('ROLLBACK');
           return false;
@@ -525,15 +548,19 @@ export class DynamoStore implements Store {
   async transact(writes: StoreWrite[], activity?: Activity) {
     validateWrites(writes, activity);
     const delta = emptySummary();
-    if (writes.some((w) => ['event', 'poll'].includes(w.kind))) {
+    const counted = writes.filter(
+      (w) => w.operation !== 'check' && ['event', 'poll'].includes(w.kind),
+    );
+    if (counted.length) {
       await this.ensureSummary();
-      for (const w of writes.filter((w) =>
-        ['event', 'poll'].includes(w.kind),
-      )) {
+      for (const w of counted) {
         const previous = await this.get(w.kind, w.id);
         if ((previous?.version ?? null) !== w.expected) return false;
         const before = contribution(w.kind, previous?.data),
-          after = contribution(w.kind, w.data);
+          after = contribution(
+            w.kind,
+            w.operation === 'delete' ? undefined : w.data,
+          );
         for (const key of Object.keys(delta) as (keyof Summary)[])
           delta[key] += after[key] - before[key];
       }
@@ -581,18 +608,9 @@ export class DynamoStore implements Store {
                 ]
               : []),
 
-            ...writes.map(({ kind, id, data, expected }) => ({
-              Put: {
+            ...writes.map(({ kind, id, data, expected, operation }) => {
+              const condition = {
                 TableName: this.config.DYNAMODB_TABLE,
-                Item: {
-                  pk: kind,
-                  sk: id,
-                  data,
-                  version: (expected ?? 0) + 1,
-                  ...(kind === 'session'
-                    ? { expiresAt: (data as { expiresAt: number }).expiresAt }
-                    : {}),
-                },
                 ConditionExpression:
                   expected === null ? 'attribute_not_exists(pk)' : '#v = :v',
                 ...(expected === null
@@ -601,8 +619,28 @@ export class DynamoStore implements Store {
                       ExpressionAttributeNames: { '#v': 'version' },
                       ExpressionAttributeValues: { ':v': expected },
                     }),
-              },
-            })),
+              };
+              if (operation === 'check')
+                return {
+                  ConditionCheck: { ...condition, Key: { pk: kind, sk: id } },
+                };
+              if (operation === 'delete')
+                return { Delete: { ...condition, Key: { pk: kind, sk: id } } };
+              return {
+                Put: {
+                  ...condition,
+                  Item: {
+                    pk: kind,
+                    sk: id,
+                    data,
+                    version: (expected ?? 0) + 1,
+                    ...(kind === 'session'
+                      ? { expiresAt: (data as { expiresAt: number }).expiresAt }
+                      : {}),
+                  },
+                },
+              };
+            }),
             ...(activity
               ? [
                   {
