@@ -1576,8 +1576,9 @@ export default function App() {
                       </dd>
                       <dt>Session</dt>
                       <dd>
-                        8-hour server-side session. Signing out revokes this
-                        session.
+                        {user.guest
+                          ? 'Temporary classroom session. Exit Demo revokes this session; participation records stay saved.'
+                          : '8-hour server-side session. Signing out revokes this session.'}
                       </dd>
                     </dl>
                     <button
@@ -1586,7 +1587,7 @@ export default function App() {
                       onClick={() => void logout()}
                     >
                       <LogOut size={16} />
-                      Sign out
+                      {user.guest ? 'Exit Demo' : 'Sign out'}
                     </button>
                   </section>
                   <section className="panel">

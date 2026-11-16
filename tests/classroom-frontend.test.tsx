@@ -6,6 +6,7 @@ import {
   screen,
   fireEvent,
   waitFor,
+  within,
   cleanup,
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -97,7 +98,9 @@ it('offers classroom join with only a display name, redirects to the attendee da
   expect(JSON.parse(String(call[1]?.body))).toEqual({ name: 'Class Student' });
   fireEvent.click(screen.getByRole('link', { name: 'Account' }));
   await screen.findByText('Classroom guest · temporary attendee');
-  fireEvent.click(screen.getByRole('button', { name: 'Exit Demo' }));
+  fireEvent.click(
+    within(screen.getByRole('main')).getByRole('button', { name: 'Exit Demo' }),
+  );
   await screen.findByRole('heading', { name: 'Welcome back' });
 });
 it('clearly disables classroom joining when the server has closed guest mode', async () => {
