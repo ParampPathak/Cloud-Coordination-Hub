@@ -2,7 +2,7 @@
 
 A shared workspace for events, registrations, automatic waitlists, polls, and office-hour appointments. Built for a university AWS Cloud Computing final project.
 
-**Current status: application and local 50-user tests verified. AWS infrastructure is implemented and validated, not deployed.** GitHub Actions performs build/test validation only. Cloud infrastructure is prepared for later authorized deployment; remote workflow results must be reviewed separately.
+**Current status: approved Plan B is deployed and verified in AWS Academy.** Open [Cloud Coordination Hub](https://dm6fo1syg8qfg.cloudfront.net/). Two healthy private EC2 instances across two AZs share RDS PostgreSQL behind CloudFront HTTPS and an internal ALB. The real 50-student guest workload passed. See the [current deployment and classroom handoff](docs/classroom-deployment-status.md) for evidence, renewal requirements and remaining UI polish. Availability depends on the active Sandbox and approved operating window. GitHub Actions validates builds; it does not itself deploy AWS resources.
 
 ## Why this project
 
@@ -16,8 +16,8 @@ Teams often juggle forms, spreadsheets, and scheduling tools. Cloud Coordination
 - Standard and multiple-choice polls, per-topic capacity signups, configurable organizer voting, changes/cancellation and result visibility, draft/open/closed/archive lifecycle, and owner/admin participant management.
 - Office-hour schedule previews, IANA time zones, weekly recurrence, breaks/buffers, per-slot capacity, private meeting reasons, atomic rescheduling, cancellation and blocking. Participant/organizer guards prevent overlapping appointments and schedules.
 - Grouped events with configurable names/count/capacity, automatic assignment, student selection, atomic transfers, owner management/removal and CSV membership export.
-- Password authentication, public attendee signup, trusted organizer provisioning, revocable database sessions and server-side ownership checks.
-- Persistent local SQLite and a DynamoDB adapter with conditional transactions. SQLite supports local development and the documented single-instance EC2 deployment.
+- Password authentication, public attendee signup, name-only classroom guests, trusted organizer provisioning, revocable shared database sessions and server-side ownership checks.
+- Production PostgreSQL and DynamoDB adapters with conditional transactions, plus persistent SQLite for local development and the documented single-instance fallback.
 - Responsive desktop/mobile interface, accessible forms/modals, real loading/empty/error states.
 - Docker, CI verification, CloudFormation and offline-image deployment preparation.
 
@@ -25,19 +25,19 @@ CSV/Excel import, universal CSV/Excel poll exports, poll-to-event automation, mu
 
 ## Final implementation and measured evidence
 
-![Implemented target architecture — not deployed](docs/architecture.png)
+![Implemented target architecture â€” not deployed](docs/architecture.png)
 
-[Deployment/recovery and class demo](docs/FINAL_DEPLOYMENT.md) · [Verification and performance evidence](docs/final-verification.md) · [Editable SVG](docs/architecture.svg). Service icons are from the [official AWS package](https://aws.amazon.com/architecture/icons/).
+[Deployment/recovery and class demo](docs/FINAL_DEPLOYMENT.md) Â· [Verification and performance evidence](docs/final-verification.md) Â· [Editable SVG](docs/architecture.svg). Service icons are from the [official AWS package](https://aws.amazon.com/architecture/icons/).
 
 The final CloudFormation template uses a two-AZ private ASG (2/2/3), HTTPS ALB, retained/PITR shared DynamoDB, gateway endpoint, CPU/request scaling, dashboard, six alarms, application metric filters, host-memory log samples and optional private Logs/SSM endpoints. No public application IP, SSH, NAT, or bootstrap downloads. Existing Academy profile, preloaded AMI, certificate/DNS and budget review remain prerequisites.
 
 `npm run test:load` and `npm run test:load:dynamodb` run 50 concurrent HTTP users through two separate local processes, using isolated databases and a health-checking test proxy. Measured 12-round runs each made **6,249 requests**, with no unexpected errors or capacity violations: **SQLite API p95 105 ms; DynamoDB Local API p95 402 ms**. A process failure/replacement preserved records and sessions with 50/50 probes successful. These desktop results do not verify EC2 sizing, AWS ALB/ASG behavior or live HTTPS. Full results and CPU/RSS measurements are in the verification report; raw repeatable outputs go to ignored `artifacts/load-*.json`.
 
-Create grouped events through **Events → Create event → Groups (optional)**. Group capacity replaces the ordinary event capacity with count × students/group. Confirmed attendees can view/join/change/leave groups when enabled; owners move students, remove attendees and export membership. Failed transfers preserve the old assignment.
+Create grouped events through **Events â†’ Create event â†’ Groups (optional)**. Group capacity replaces the ordinary event capacity with count Ã— students/group. Confirmed attendees can view/join/change/leave groups when enabled; owners move students, remove attendees and export membership. Failed transfers preserve the old assignment.
 
-Use **Scheduling → Create office-hour schedule** to preview a local date/time window, zone, duration, capacity, break, buffer and weekly repeats. A 2–4 PM window with 15 minutes yields eight slots. Students can provide a reason, book, cancel or atomically reschedule. Owners inspect students/reasons and cancel or block appointments. Unknown legacy timestamps stay unknown. Ambiguous/nonexistent DST times are rejected. Limits: 64 appointments/schedule, 500 upcoming organizer intervals, 8 weekly occurrences. Bulk schedule editing, organizer-driven relocation of another student's booking and universal spreadsheet imports are not implemented; block an available original slot and create a replacement, or explicitly resolve confirmed bookings.
+Use **Scheduling â†’ Create office-hour schedule** to preview a local date/time window, zone, duration, capacity, break, buffer and weekly repeats. A 2â€“4 PM window with 15 minutes yields eight slots. Students can provide a reason, book, cancel or atomically reschedule. Owners inspect students/reasons and cancel or block appointments. Unknown legacy timestamps stay unknown. Ambiguous/nonexistent DST times are rejected. Limits: 64 appointments/schedule, 500 upcoming organizer intervals, 8 weekly occurrences. Bulk schedule editing, organizer-driven relocation of another student's booking and universal spreadsheet imports are not implemented; block an available original slot and create a replacement, or explicitly resolve confirmed bookings.
 
-The safe local seed now includes a sample office-hour schedule, 9×4 grouped event, event and poll. It refuses populated storage and AWS tables. For production, provision a unique organizer through the trusted CLI and create sample resources through that account; never publish administrator passwords.
+The safe local seed now includes a sample office-hour schedule, 9Ã—4 grouped event, event and poll. It refuses populated storage and AWS tables. For production, provision a unique organizer through the trusted CLI and create sample resources through that account; never publish administrator passwords.
 
 SQLite and DynamoDB share an explicit multi-record transaction API. Slot/participant-guard/audit changes commit together; rescheduling includes both slots, and organizer guards serialize schedule creation. Groups remain inside the event aggregate with registrations and waitlist promotion. Sessions remain in the shared database; no sticky sessions are required.
 
@@ -77,7 +77,7 @@ docs/                 API, data model, security and midpoint deliverables
 .github/workflows/    Build/test CI only; no deployment
 ```
 
-## Start locally — no AWS or Docker required
+## Start locally â€” no AWS or Docker required
 
 Install Node 24, then from this repository in PowerShell:
 
@@ -102,7 +102,7 @@ Defaults work without `.env`. See the comments in [.env.example](.env.example). 
 
 ### Provision your own organizer
 
-Use a password of 12–128 characters including uppercase, lowercase and a number. Set it in the session rather than passing it on the command line:
+Use a password of 12â€“128 characters including uppercase, lowercase and a number. Set it in the session rather than passing it on the command line:
 
 ```powershell
 $env:HUB_USER_PASSWORD = [System.Net.NetworkCredential]::new('', (Read-Host 'Organizer password' -AsSecureString)).Password

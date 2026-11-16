@@ -1,10 +1,10 @@
-# Classroom guest access — preparation and operation
+# Classroom guest access â€” preparation and operation
 
 Implementation enables name-only attendee sessions without fake emails or shared passwords. Permanent account sign-in and registration remain available. Guests cannot become organizers or manage another person's registrations. PostgreSQL stores every guest, session and participation record; independent application nodes use the same records. SQLite remains the local default.
 
 ## Runtime configuration
 
-Guest access defaults to off. Set `GUEST_DEMO_ENABLED=true`, `GUEST_SESSION_HOURS=24` (1–168), and `GUEST_DAILY_LIMIT=500` (50–10,000). The Plan B private runtime JSON accepts `guestDemoEnabled`, `guestSessionHours`, and `guestDailyLimit`; the bootstrap validates them and writes the application environment. For initial setup, explicitly run the existing deployment runner's `configured --enable-classroom-demo` stage. This does not update running processes; deploy the reviewed bootstrap and roll/restart both instances for later changes.
+Guest access defaults to off. Set `GUEST_DEMO_ENABLED=true`, `GUEST_SESSION_HOURS=24` (1â€“168), and `GUEST_DAILY_LIMIT=500` (50â€“10,000). The Plan B private runtime JSON accepts `guestDemoEnabled`, `guestSessionHours`, and `guestDailyLimit`; the bootstrap validates them and writes the application environment. For initial setup, explicitly run the existing deployment runner's `configured --enable-classroom-demo` stage. This does not update running processes; deploy the reviewed bootstrap and roll/restart both instances for later changes.
 
 Joining accepts only a display name. A cryptographically random UUID distinguishes duplicate names. The cookie contains a random token; storage retains its SHA-256 hash. Cookies are HttpOnly, SameSite=Lax, Secure over production HTTPS, and expire after the configured interval. Exit Demo revokes the session. Expiration/revocation does not remove registrations, bookings, votes, or activity. A guest must retain the same browser cookie to resume; a new join creates a new identity.
 
@@ -20,7 +20,7 @@ The command prechecks all three selected accounts. Existing accounts must have t
 
 `node dist/backend/scripts/cleanup-classroom-guests.js PRIVATE_UUID_ARRAY_JSON` is a dry run. Apply requires `--apply`, `ALLOW_GUEST_CLEANUP=true`, and guest mode disabled in the maintenance configuration. Before ordinary class cleanup, close guest access on both app instances and drain in-flight requests. This trusted command has no public HTTP endpoint.
 
-It accepts 1–500 explicit guest UUIDs, rejects permanent user IDs, revokes selected sessions, cancels only selected guests' event registrations through the existing FIFO promotion logic, releases their bookings/group seats, and removes their votes and activity. Organizer events/slots/polls and permanent users remain. Already absent guests are reported without failure, so the same manifest can be retried. The daily admission counter remains to prevent cleanup from bypassing the abuse cap. Archive authorized demonstration/test data before applying cleanup.
+It accepts 1â€“500 explicit guest UUIDs, rejects permanent user IDs, revokes selected sessions, cancels only selected guests' event registrations through the existing FIFO promotion logic, releases their bookings/group seats, and removes their votes and activity. Organizer events/slots/polls and permanent users remain. Already absent guests are reported without failure, so the same manifest can be retried. The daily admission counter remains to prevent cleanup from bypassing the abuse cap. Archive authorized demonstration/test data before applying cleanup.
 
 ## Verification completed locally
 
@@ -31,9 +31,9 @@ It accepts 1–500 explicit guest UUIDs, rejects permanent user IDs, revokes sel
 
 These are local results, not AWS deployment or AWS performance evidence. See the live verification record for independently observed deployment results.
 
-## Current lab recovery status (2026-11-15)
+## Historical predeployment recovery observation (2026-11-15)
 
-Fresh STS and resource inventory show that the current Sandbox is a different account from the earlier verified deployment. It has no project EC2, ALB, ASG, RDS, CloudFront distribution or S3 bucket. Preserve the Academy-managed stack. The previous public hostname is unavailable; previous verification documents are historical evidence.
+Before the approved recovery, STS and inventory established a replacement Sandbox account with no project resources. That observation is historical: Plan B is now deployed and verified. See [the current deployment status](classroom-deployment-status.md) for the working URL and actual AWS evidence. The Academy-managed stack was preserved; the earlier public hostname should not be shared.
 
 The private final logical backup contains 88 records with schema version 1 and was verified by exact restore into isolated local PostgreSQL. Recovery must target an empty newly initialized database, preserve all record IDs, password hashes and organizer ownership, and finish before provisioning additional accounts. Never restore the archived disposable load-test dataset. Do not treat permission simulations as deployment evidence.
 
