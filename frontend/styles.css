@@ -2004,6 +2004,9 @@ select {
 .scheduling-builder {
   margin-bottom: 20px;
 }
+.schedule-fields {
+  display: contents;
+}
 .schedule-preview {
   max-height: 360px;
   overflow: auto;
@@ -2012,15 +2015,39 @@ select {
 .appointment-card {
   display: grid;
   gap: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .appointment-card p,
 .appointment-card h3 {
   margin: 0;
 }
-.appointment-card textarea,
-.appointment-card select,
+.appointment-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.appointment-field textarea {
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fcfdf9;
+  resize: vertical;
+}
+.appointment-field select:focus-visible,
+.group-section select:focus-visible {
+  outline: 3px solid #b18829;
+  outline-offset: 3px;
+}
+.appointment-field select,
 .group-section select {
   width: 100%;
+  min-width: 0;
+}
+.appointment-reschedule {
+  align-items: end;
 }
 .booking-list {
   padding-left: 20px;
@@ -2029,6 +2056,15 @@ select {
   border-top: 1px solid var(--border, #e0e6e1);
   margin-top: 18px;
   padding-top: 14px;
+}
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+.event-grid:has(.group-grid) {
+  align-items: start;
 }
 .group-grid {
   display: grid;
@@ -2051,8 +2087,12 @@ select {
 }
 .group-section label {
   display: grid;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.event-card h3,
+.account-grid .panel {
+  overflow-wrap: anywhere;
 }
 .check-label {
   display: flex;

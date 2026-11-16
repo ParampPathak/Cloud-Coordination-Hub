@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { api } from './api';
 import type { EventView, GroupView, Registration, User } from '../shared/types';
 
@@ -18,13 +18,17 @@ export function Groups({
     [error, setError] = useState(''),
     [notice, setNotice] = useState('');
   const owns = event.organizerId === user.id;
+  const gridId = useId();
   async function load() {
     setBusy(true);
     setError('');
     try {
-      const membership = await api<GroupView[]>(`/events/${event.id}/groups`);
+      const [membership, attendees] = await Promise.all([
+        api<GroupView[]>(`/events/${event.id}/groups`),
+        owns ? api<Registration[]>(`/events/${event.id}/attendees`) : [],
+      ]);
       setGroups(membership);
-      if (owns) setRows(await api(`/events/${event.id}/attendees`));
+      setRows(attendees);
       setOpen(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load groups.');
@@ -52,6 +56,7 @@ export function Groups({
   }
   if (!event.groups) return null;
   const confirmed = event.registration?.status === 'confirmed';
+  const canView = owns || confirmed;
   return (
     <section className="group-section">
       <p className="muted">
@@ -61,14 +66,27 @@ export function Groups({
           ? ` · Your group: ${event.groups.find((g) => g.id === event.registration?.groupId)?.name}`
           : ''}
       </p>
-      {owns || confirmed ? (
-        <button
-          className="text-button"
-          disabled={busy}
-          onClick={() => (open ? setOpen(false) : void load())}
-        >
-          {open ? 'Hide groups' : 'View groups'}
-        </button>
+      {canView ? (
+        <div className="group-actions">
+          <button
+            className="button secondary"
+            disabled={busy}
+            aria-expanded={open}
+            aria-controls={open ? gridId : undefined}
+            onClick={() => (open ? setOpen(false) : void load())}
+          >
+            {open ? 'Hide groups' : busy ? 'Loading groups…' : 'View groups'}
+          </button>
+          {open && (
+            <button
+              className="button secondary"
+              disabled={busy}
+              onClick={() => void load()}
+            >
+              Refresh groups
+            </button>
+          )}
+        </div>
       ) : (
         <small>Register to view and join groups.</small>
       )}
@@ -78,16 +96,9 @@ export function Groups({
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      {open && (
+      {open && canView && (
         <>
-          <button
-            className="text-button"
-            disabled={busy}
-            onClick={() => void load()}
-          >
-            Refresh groups
-          </button>
-          <div className="group-grid">
+          <div className="group-grid" id={gridId} aria-busy={busy}>
             {groups.map((g) => (
               <div className="group-card" key={g.id}>
                 <h4>

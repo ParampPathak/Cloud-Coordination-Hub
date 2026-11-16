@@ -66,6 +66,7 @@ export function OfficeHoursBuilder({ onSaved }: { onSaved: () => void }) {
     }
   }
   async function save() {
+    if (!draft) return;
     setBusy(true);
     setError('');
     try {
@@ -84,7 +85,15 @@ export function OfficeHoursBuilder({ onSaved }: { onSaved: () => void }) {
     <section className="panel scheduling-builder">
       <button
         className="button secondary"
-        onClick={() => setOpen(!open)}
+        disabled={busy}
+        onClick={() => {
+          if (open) {
+            setDraft(null);
+            setPreview([]);
+            setError('');
+          }
+          setOpen(!open);
+        }}
         aria-expanded={open}
       >
         {open ? 'Close schedule builder' : 'Create office-hour schedule'}
@@ -98,154 +107,163 @@ export function OfficeHoursBuilder({ onSaved }: { onSaved: () => void }) {
             setPreview([]);
           }}
         >
-          <h2>Office hours</h2>
-          <p className="muted">
-            Choose a local window. Preview every appointment before saving.
-            Weekly repeats stay in the selected time zone.
-          </p>
-          <label>
-            Schedule title
-            <input
-              name="title"
-              required
-              maxLength={160}
-              defaultValue="Professor office hours"
-            />
-          </label>
-          <label>
-            Office-hour location
-            <input name="location" required maxLength={160} />
-          </label>
-          <div className="form-row">
+          <fieldset className="schedule-fields" disabled={busy}>
+            <h2>Office hours</h2>
+            <p className="muted">
+              Choose a local window. Preview every appointment before saving.
+              Weekly repeats stay in the selected time zone.
+            </p>
             <label>
-              Office-hour date
-              <input name="date" type="date" required />
-            </label>
-            <label>
-              Time zone
+              Schedule title
               <input
-                name="timeZone"
+                name="title"
                 required
-                defaultValue={Intl.DateTimeFormat().resolvedOptions().timeZone}
-              />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              Window start
-              <input
-                name="startTime"
-                type="time"
-                required
-                defaultValue="14:00"
+                maxLength={160}
+                defaultValue="Professor office hours"
               />
             </label>
             <label>
-              Window end
-              <input name="endTime" type="time" required defaultValue="16:00" />
+              Office-hour location
+              <input name="location" required maxLength={160} />
             </label>
-          </div>
-          <div className="form-row">
-            <label>
-              Appointment minutes
-              <input
-                name="durationMinutes"
-                type="number"
-                min={5}
-                max={240}
-                required
-                defaultValue={15}
-              />
-            </label>
-            <label>
-              Students per appointment
-              <input
-                name="capacity"
-                type="number"
-                min={1}
-                max={50}
-                required
-                defaultValue={1}
-              />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              Repeat weekly for weeks
-              <input
-                name="weeks"
-                type="number"
-                min={1}
-                max={8}
-                required
-                defaultValue={1}
-              />
-            </label>
-            <label>
-              Buffer minutes
-              <input
-                name="bufferMinutes"
-                type="number"
-                min={0}
-                max={120}
-                required
-                defaultValue={0}
-              />
-            </label>
-          </div>
-          <div className="form-row">
-            <label>
-              Break starts (optional)
-              <input name="breakStart" type="time" />
-            </label>
-            <label>
-              Break ends (optional)
-              <input name="breakEnd" type="time" />
-            </label>
-          </div>
-          <details>
-            <summary>Booking policies</summary>
             <div className="form-row">
               <label>
-                Booking cutoff minutes
+                Office-hour date
+                <input name="date" type="date" required />
+              </label>
+              <label>
+                Time zone
                 <input
-                  name="bookingLeadMinutes"
-                  type="number"
-                  min={0}
-                  max={10080}
-                  defaultValue={0}
+                  name="timeZone"
+                  required
+                  defaultValue={
+                    Intl.DateTimeFormat().resolvedOptions().timeZone
+                  }
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Window start
+                <input
+                  name="startTime"
+                  type="time"
+                  required
+                  defaultValue="14:00"
                 />
               </label>
               <label>
-                Cancellation cutoff minutes
+                Window end
                 <input
-                  name="cancelBeforeMinutes"
+                  name="endTime"
+                  type="time"
+                  required
+                  defaultValue="16:00"
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Appointment minutes
+                <input
+                  name="durationMinutes"
+                  type="number"
+                  min={5}
+                  max={240}
+                  required
+                  defaultValue={15}
+                />
+              </label>
+              <label>
+                Students per appointment
+                <input
+                  name="capacity"
+                  type="number"
+                  min={1}
+                  max={50}
+                  required
+                  defaultValue={1}
+                />
+              </label>
+            </div>
+            <div className="form-row">
+              <label>
+                Repeat weekly for weeks
+                <input
+                  name="weeks"
+                  type="number"
+                  min={1}
+                  max={8}
+                  required
+                  defaultValue={1}
+                />
+              </label>
+              <label>
+                Buffer minutes
+                <input
+                  name="bufferMinutes"
                   type="number"
                   min={0}
-                  max={10080}
+                  max={120}
+                  required
                   defaultValue={0}
                 />
               </label>
             </div>
-            <label>
-              Maximum active appointments per student
-              <input
-                name="maxActiveBookings"
-                type="number"
-                min={1}
-                max={50}
-                defaultValue={20}
-              />
-            </label>
-          </details>
-          <small className="muted">
-            Up to 64 appointments per schedule. Breaks, buffers, and leftover
-            minutes do not become appointments. Ambiguous daylight-saving times
-            require another window.
-          </small>
-          <button className="button primary" disabled={busy}>
-            {busy ? 'Please wait…' : 'Preview appointments'}
-          </button>
+            <div className="form-row">
+              <label>
+                Break starts (optional)
+                <input name="breakStart" type="time" />
+              </label>
+              <label>
+                Break ends (optional)
+                <input name="breakEnd" type="time" />
+              </label>
+            </div>
+            <details>
+              <summary>Booking policies</summary>
+              <div className="form-row">
+                <label>
+                  Booking cutoff minutes
+                  <input
+                    name="bookingLeadMinutes"
+                    type="number"
+                    min={0}
+                    max={10080}
+                    defaultValue={0}
+                  />
+                </label>
+                <label>
+                  Cancellation cutoff minutes
+                  <input
+                    name="cancelBeforeMinutes"
+                    type="number"
+                    min={0}
+                    max={10080}
+                    defaultValue={0}
+                  />
+                </label>
+              </div>
+              <label>
+                Maximum active appointments per student
+                <input
+                  name="maxActiveBookings"
+                  type="number"
+                  min={1}
+                  max={50}
+                  defaultValue={20}
+                />
+              </label>
+            </details>
+            <small className="muted">
+              Up to 64 appointments per schedule. Breaks, buffers, and leftover
+              minutes do not become appointments. Ambiguous daylight-saving
+              times require another window.
+            </small>
+            <button className="button primary">
+              {busy ? 'Please wait…' : 'Preview appointments'}
+            </button>
+          </fieldset>
         </form>
       )}
       {error && (
@@ -380,8 +398,8 @@ export function SlotCard({
         </small>
       )}
       {!owns && !mine && !past && !full && !slot.blocked && (
-        <label>
-          Reason for meeting (optional)
+        <label className="appointment-field">
+          <span>Reason for meeting (optional)</span>
           <textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -449,8 +467,8 @@ export function SlotCard({
         </>
       )}
       {mine && !past && (
-        <div className="form-row">
-          <label>
+        <div className="form-row appointment-reschedule">
+          <label className="appointment-field">
             Move appointment to
             <select
               value={destination}
@@ -466,7 +484,7 @@ export function SlotCard({
           </label>
           <button
             className="button secondary"
-            disabled={busy || !destination}
+            disabled={busy || !alternatives.some((s) => s.id === destination)}
             onClick={() =>
               act(
                 `/slots/${slot.id}/reschedule`,

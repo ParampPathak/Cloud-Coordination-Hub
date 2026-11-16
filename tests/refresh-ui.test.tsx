@@ -119,3 +119,15 @@ it('ignores late responses after navigating to another page', async () => {
   ).toBeInTheDocument();
   expect(screen.queryByText('Late event data')).not.toBeInTheDocument();
 });
+it('replaces initial loading with a retry when the first request fails', async () => {
+  const pending = setup();
+  await waitFor(() => expect(pending.length).toBeGreaterThan(0));
+  await act(async () => pending.at(-1)!(new Response(null, { status: 403 })));
+  const retry = await screen.findByRole('button', { name: 'Try again' });
+  expect(screen.queryByText('Loading live workspace data…')).toBeNull();
+  const before = pending.length;
+  fireEvent.click(retry);
+  await waitFor(() => expect(pending.length).toBeGreaterThan(before));
+  await act(async () => pending.at(-1)!(page('Recovered event')));
+  expect(await screen.findByText('Recovered event')).toBeInTheDocument();
+});

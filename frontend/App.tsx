@@ -829,6 +829,7 @@ export default function App() {
     setPreviousCursors([]);
     setNextCursor(null);
     setSnapshot(null);
+    setNotice('');
   }, [path]);
   async function act(
     endpoint: string,
@@ -1138,9 +1139,11 @@ export default function App() {
             </p>
           )}
           {!snapshot ? (
-            <div className="panel page-loading" role="status">
-              Loading live workspace data…
-            </div>
+            (!backgroundError || pageLoading) && (
+              <div className="panel page-loading" role="status">
+                Loading live workspace data…
+              </div>
+            )
           ) : (
             <>
               {path === '/dashboard' && (
