@@ -4,6 +4,8 @@ import type { WorkspaceView, WorkspaceMember } from '../shared/workspaces';
 import { PROJECT_WORKSPACE_ID } from '../shared/workspaces';
 import { api } from './api';
 import { Modal } from './Modal';
+import { InviteSharing } from './InviteQr';
+import { QrScanner } from './QrScanner';
 
 type Details = {
   workspace: WorkspaceView;
@@ -21,18 +23,23 @@ export function WorkspaceControls({
   userId,
   canCreate,
   onChange,
+  invite,
+  onInviteHandled,
 }: {
   active?: WorkspaceView;
   items: WorkspaceView[];
   userId: string;
   canCreate: boolean;
   onChange: (id?: string) => void;
+  invite?: string | null;
+  onInviteHandled?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [mode, setMode] = useState<'join' | 'manage' | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [code, setCode] = useState('');
+  const [scanning, setScanning] = useState(false);
   const [preview, setPreview] = useState<{
     id: string;
     name: string;
@@ -40,9 +47,15 @@ export function WorkspaceControls({
   } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const managed = items.filter((w) => w.role !== 'attendee');
+  const member = preview && items.find((w) => w.id === preview.id);
+  const finish = () => {
+    setMode(null);
+    setScanning(false);
+    onInviteHandled?.();
+  };
   const close = () => {
     if (!busy) {
-      setMode(null);
+      finish();
       trigger.current?.focus();
     }
   };
@@ -53,23 +66,47 @@ export function WorkspaceControls({
     setPreview(null);
     setMode(next);
   }
-  async function join(event: FormEvent) {
-    event.preventDefault();
-    if (busy) return;
+  async function find(value: string) {
     setBusy(true);
     setError('');
     try {
-      if (!preview)
-        setPreview(await api('/workspaces/preview', 'POST', { code }));
-      else {
-        const joined = await api<WorkspaceView>('/workspaces/join', 'POST', {
-          code,
-          workspaceId: preview.id,
-          confirmation: preview.confirmation,
-        });
-        setMode(null);
-        onChange(joined.id);
-      }
+      setPreview(await api('/workspaces/preview', 'POST', { code: value }));
+    } catch (e) {
+      setError(message(e));
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+  // An invitation link opens the join dialog, filled in and validated, but
+  // membership is only created after the visitor confirms.
+  const handled = useRef<string | null>(null);
+  useEffect(() => {
+    if (!invite || handled.current === invite) return;
+    handled.current = invite;
+    open('join');
+    setCode(invite);
+    void find(invite);
+  }, [invite]);
+  async function join(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    if (member) {
+      finish();
+      onChange(member.id);
+      return;
+    }
+    if (!preview) return void find(code);
+    setBusy(true);
+    setError('');
+    try {
+      const joined = await api<WorkspaceView>('/workspaces/join', 'POST', {
+        code,
+        workspaceId: preview.id,
+        confirmation: preview.confirmation,
+      });
+      finish();
+      onChange(joined.id);
     } catch (e) {
       setError(message(e));
       setPreview(null);
@@ -199,9 +236,30 @@ export function WorkspaceControls({
                 readOnly={busy}
               />
             </label>
+            {!preview && (
+              <div className="scan-option">
+                <span className="muted">or scan a workspace QR code</span>
+                <button
+                  type="button"
+                  className="button secondary"
+                  disabled={busy}
+                  onClick={() => setScanning(true)}
+                >
+                  Scan QR Code
+                </button>
+              </div>
+            )}
             {preview && (
               <p role="status">
-                Join <strong>{preview.name}</strong>?
+                {member ? (
+                  <>
+                    You are already a member of <strong>{preview.name}</strong>.
+                  </>
+                ) : (
+                  <>
+                    Join <strong>{preview.name}</strong>?
+                  </>
+                )}
               </p>
             )}
             {error && (
@@ -219,11 +277,25 @@ export function WorkspaceControls({
                 Cancel
               </button>
               <button className="button primary" disabled={busy}>
-                {preview ? 'Join Workspace' : 'Find workspace'}
+                {member
+                  ? 'Open Workspace'
+                  : preview
+                    ? 'Join Workspace'
+                    : 'Find Workspace'}
               </button>
             </div>
           </form>
         </Modal>
+      )}
+      {scanning && (
+        <QrScanner
+          onClose={() => setScanning(false)}
+          onCode={(scanned) => {
+            setScanning(false);
+            setCode(scanned);
+            void find(scanned);
+          }}
+        />
       )}
       {mode === 'manage' && (
         <WorkspaceManagement
@@ -443,6 +515,20 @@ function WorkspaceSettings({
               Current invitation code
               <input readOnly value={details.invitation.code} />
             </label>
+            <InviteSharing
+              code={details.invitation.code}
+              workspace={details.workspace.name}
+              enabled={details.invitation.enabled}
+              busy={busy}
+              onNotice={(text) => {
+                setError('');
+                setNotice(text);
+              }}
+              onError={(text) => {
+                setNotice('');
+                setError(text);
+              }}
+            />
             <div className="management-actions">
               <button
                 className="button secondary"

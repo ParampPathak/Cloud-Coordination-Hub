@@ -40,6 +40,8 @@ import {
 } from './workspace-api';
 import { WorkspaceControls } from './WorkspaceControls';
 import { Modal } from './Modal';
+import { QrScanner } from './QrScanner';
+import { clearPendingInvite, takeInviteFromLocation } from './invite';
 import type { WorkspaceView } from '../shared/workspaces';
 import type { EventView, Registration, Snapshot, User } from '../shared/types';
 
@@ -82,6 +84,7 @@ function Login({
   guestEnabled,
   guestSessionHours,
   workspaceInvitations,
+  initialCode,
 }: {
   guestEnabled: boolean;
   guestSessionHours: number;
@@ -90,9 +93,12 @@ function Login({
   local: boolean;
   deploymentLabel?: string;
   https?: boolean;
+  initialCode?: string | null;
 }) {
   const [register, setRegister] = useState(false);
-  const [guest, setGuest] = useState(false);
+  const [guest, setGuest] = useState(Boolean(initialCode));
+  const [code, setCode] = useState(initialCode ?? '');
+  const [scanning, setScanning] = useState(false);
   const [preview, setPreview] = useState<{
     id: string;
     name: string;
@@ -100,6 +106,29 @@ function Login({
   } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const findWorkspace = useCallback(async (value: string) => {
+    setBusy(true);
+    setError('');
+    try {
+      setPreview(
+        await globalApi('/auth/workspace-preview', 'POST', { code: value }),
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+      setPreview(null);
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+  // Invitation links prefill and validate the code; joining still needs a
+  // display name and an explicit Join Workspace confirmation.
+  const validated = useRef(false);
+  useEffect(() => {
+    if (!initialCode || validated.current) return;
+    if (!guestEnabled || !workspaceInvitations) return;
+    validated.current = true;
+    void findWorkspace(initialCode);
+  }, [initialCode, guestEnabled, workspaceInvitations, findWorkspace]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setBusy(true);
@@ -112,7 +141,6 @@ function Login({
     try {
       if (guest) {
         const name = data.get('name');
-        const code = data.get('workspaceCode');
         if (workspaceInvitations && !preview) {
           setPreview(
             await globalApi('/auth/workspace-preview', 'POST', { code }),
@@ -234,14 +262,14 @@ function Login({
         )}
         <h2>
           {guest
-            ? 'Join the classroom'
+            ? 'Join a workspace'
             : register
               ? 'Join your workspace'
               : 'Welcome back'}
         </h2>
         <p className="muted">
           {guest
-            ? `Enter a display name. No email or password needed. Your demo session lasts ${guestSessionHours} hours.`
+            ? `Enter your display name to get started. No email or password required. Your guest session lasts ${guestSessionHours} hours.`
             : register
               ? 'Create an attendee account to start coordinating.'
               : 'Sign in to see what’s happening in your workspace.'}
@@ -263,9 +291,26 @@ function Login({
                   required
                   autoComplete="off"
                   readOnly={busy}
-                  onChange={() => setPreview(null)}
+                  value={code}
+                  onChange={(e) => {
+                    setCode(e.target.value);
+                    setPreview(null);
+                  }}
                 />
               </label>
+              {!preview && (
+                <div className="scan-option">
+                  <span className="muted">or scan a workspace QR code</span>
+                  <button
+                    type="button"
+                    className="button secondary"
+                    disabled={busy}
+                    onClick={() => setScanning(true)}
+                  >
+                    Scan QR Code
+                  </button>
+                </div>
+              )}
               {preview && (
                 <p role="status">
                   Join <strong>{preview.name}</strong>?
@@ -315,7 +360,7 @@ function Login({
                 ? workspaceInvitations
                   ? preview
                     ? 'Join Workspace'
-                    : 'Find workspace'
+                    : 'Find Workspace'
                   : 'Enter classroom'
                 : register
                   ? 'Create account'
@@ -323,6 +368,16 @@ function Login({
             <ArrowRight size={17} />
           </button>
         </form>
+        {scanning && (
+          <QrScanner
+            onClose={() => setScanning(false)}
+            onCode={(scanned) => {
+              setScanning(false);
+              setCode(scanned);
+              void findWorkspace(scanned);
+            }}
+          />
+        )}
         <button
           className="text-button"
           onClick={() => {
@@ -763,6 +818,11 @@ export default function App() {
     selected?: string;
   } | null>(null);
   const [error, setError] = useState('');
+  const [invite, setInvite] = useState(() => takeInviteFromLocation());
+  const inviteHandled = useCallback(() => {
+    clearPendingInvite();
+    setInvite(null);
+  }, []);
   const listGate = useRef(new RefreshGate());
   const navigate = useNavigate();
   const local = deployment === 'local';
@@ -888,9 +948,11 @@ export default function App() {
           guestEnabled={guestEnabled}
           guestSessionHours={guestSessionHours}
           workspaceInvitations={workspaceInvitations}
+          initialCode={invite}
           onLogin={(account, workspaceId) => {
             setError('');
             setInventory(null);
+            if (workspaceId) inviteHandled();
             if (workspaceId)
               localStorage.setItem('cch-workspace:' + account.id, workspaceId);
             setUser(account);
@@ -928,6 +990,8 @@ export default function App() {
       userId={user.id}
       canCreate={list.canCreate}
       onChange={(id) => void load(id)}
+      invite={invite}
+      onInviteHandled={inviteHandled}
     />
   ) : undefined;
   if (list.enabled && !active)

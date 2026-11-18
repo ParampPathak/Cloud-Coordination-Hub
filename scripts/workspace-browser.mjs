@@ -131,7 +131,7 @@ try {
   await click(guest, 'Join Classroom Demo');
   await guest.getByLabel('Display name').fill('Sam Fixture');
   await guest.getByLabel('Invitation code').fill(alpha);
-  await click(guest, 'Find workspace');
+  await click(guest, 'Find Workspace');
   await guest.getByRole('status').getByText('Workshop Lab').waitFor();
   assert.equal(await guest.getByLabel('Email address').count(), 0);
   await click(guest, 'Join Workspace');
@@ -148,7 +148,7 @@ try {
     .getByRole('button', { name: 'Join Workspace' })
     .click();
   await guest.getByLabel('Invitation code').fill(beta);
-  await modalButton(guest, 'Find workspace').click();
+  await modalButton(guest, 'Find Workspace').click();
   await modal(guest).getByText('Cloud Classroom', { exact: true }).waitFor();
   await modalButton(guest, 'Join Workspace').click();
   await button(guest, /^Cloud Classroom /).waitFor();

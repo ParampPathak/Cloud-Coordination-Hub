@@ -2273,3 +2273,72 @@ select {
     max-height: 48dvh;
   }
 }
+.invite-sharing {
+  margin: 12px 0 4px;
+}
+.scan-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 2px 0 14px;
+}
+.scan-option .muted {
+  margin: 0;
+}
+.qr-modal {
+  max-width: 560px;
+}
+.qr-workspace {
+  margin: -8px 0 16px;
+  font-family: var(--serif);
+  font-size: 1.35rem;
+  color: var(--green);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.qr-frame {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: white;
+  padding: 8px;
+}
+.qr-image {
+  display: block;
+  width: min(100%, 440px, 62dvh);
+  height: auto;
+  aspect-ratio: 1;
+  image-rendering: pixelated;
+}
+.qr-camera {
+  border-radius: 13px;
+  overflow: hidden;
+  background: var(--ink);
+  aspect-ratio: 4 / 3;
+  max-height: 60dvh;
+}
+.qr-camera video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.qr-help {
+  margin: 12px 0 0;
+  text-align: center;
+}
+.qr-actions {
+  flex-wrap: wrap;
+}
+@media (max-width: 540px) {
+  .qr-modal {
+    padding: 20px 16px;
+  }
+  .qr-actions .button {
+    flex: 1 1 100%;
+  }
+}

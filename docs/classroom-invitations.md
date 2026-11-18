@@ -1,0 +1,11 @@
+# Workspace invitations and classroom joining
+
+Workspace owners and managers can use **Manage Workspaces** to copy an invitation link, display a QR code, or download a PNG. QR codes encode the current site's `/join#invite=...` link. Invitation codes stay in the URL fragment and are removed from the address bar after reading, so they are not sent in HTTP request paths or query strings. A pending invitation survives a refresh in the same browser tab until it is completed or dismissed.
+
+Guests enter a display name without an email or password. Opening an invitation link prefills and validates the invitation; joining still requires explicit confirmation of the workspace name. A signed-in guest joins additional workspaces using the same session identity. Existing members can open the workspace directly from the invitation dialog. New accounts retain attendee privileges, and invitations do not grant organizer or manager permissions.
+
+**Scan QR Code** accepts this site's invitation links or bare invitation codes. Camera scanning requires a secure context (HTTPS, or a supported localhost development context), browser camera support and permission. The scanner uses the native QR detector where available and loads the JavaScript decoder otherwise. Invalid or foreign QR content is rejected. Camera denial or missing hardware leaves manual code entry available; closing the scanner stops its camera tracks.
+
+Regenerating an invitation invalidates its old code and links. Disabling invitations blocks new admission, including from previously downloaded QR images. These actions do not remove existing memberships. Share invitation links and QR images only with intended participants.
+
+Verification uses the existing `npm run check`, `npm run format:check` and `npm run infra:validate:postgres` commands. `npm run test:postgres` requires a disposable loopback PostgreSQL server and tests migration, preservation, workspace isolation and coordination under the PostgreSQL adapter. Never point local test runners at a deployed database. Physical camera scanning remains dependent on the user's device and browser; automated decoder and camera-lifecycle tests do not substitute for a physical-device camera test.
