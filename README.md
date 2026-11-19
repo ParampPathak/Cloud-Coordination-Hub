@@ -2,7 +2,7 @@
 
 A shared workspace for events, registrations, automatic waitlists, polls, and office-hour appointments. Built for a university AWS Cloud Computing final project.
 
-**Current status: approved Plan B is deployed and verified in AWS Academy.** Open [Cloud Coordination Hub](https://dm6fo1syg8qfg.cloudfront.net/). Two healthy private EC2 instances across two AZs share RDS PostgreSQL behind CloudFront HTTPS and an internal ALB. The real 50-student guest workload passed. See the [current deployment and classroom handoff](docs/classroom-deployment-status.md) for evidence, renewal requirements and remaining UI polish. Availability depends on the active Sandbox and approved operating window. GitHub Actions validates builds; it does not itself deploy AWS resources.
+**Project status.** Private workspaces, invitation links and QR sharing/scanning are implemented in the current source. The full Plan B architecture was deployed and verified in earlier AWS Academy sessions. Current public availability has not been reverified for this documentation update. Historical deployment evidence records the tested release and Sandbox session.
 
 ## Why this project
 
@@ -10,42 +10,57 @@ Teams often juggle forms, spreadsheets, and scheduling tools. Cloud Coordination
 
 ## Implemented features
 
-- Dashboard with stored-data totals and scoped recent activity.
-- Organizer-owned events, editable capacity, confirmed registrations, FIFO waitlists, atomic cancellation/promotion and duplicate protection.
-- Owner-only attendee lists and safe downloadable CSV export.
-- Standard and multiple-choice polls, per-topic capacity signups, configurable organizer voting, changes/cancellation and result visibility, draft/open/closed/archive lifecycle, and owner/admin participant management.
-- Office-hour schedule previews, IANA time zones, weekly recurrence, breaks/buffers, per-slot capacity, private meeting reasons, atomic rescheduling, cancellation and blocking. Participant/organizer guards prevent overlapping appointments and schedules.
-- Grouped events with configurable names/count/capacity, automatic assignment, student selection, atomic transfers, owner management/removal and CSV membership export.
-- Password authentication, public attendee signup, name-only classroom guests, trusted organizer provisioning, revocable shared database sessions and server-side ownership checks.
-- Production PostgreSQL and DynamoDB adapters with conditional transactions, plus persistent SQLite for local development and the documented single-instance fallback.
-- Responsive desktop/mobile interface, accessible forms/modals, real loading/empty/error states.
-- Docker, CI verification, CloudFormation and offline-image deployment preparation.
+- Private workspaces with organizer creation, workspace switching, isolated events/polls/schedules, Owner/Manager/Attendee permissions, membership management, archive and restore operations.
+- Invitation codes, shareable invitation links and downloadable QR codes, camera scanning with manual entry fallback, workspace confirmation, and invitation rotation or disabling.
+- Name-only classroom guests with stored identities and revocable sessions, attendee accounts, organizer login, password hashing, and server-side authorization.
+- Events with capacity limits, duplicate protection, FIFO waitlists and automatic promotion after cancellation. Grouped registration supports automatic assignment, attendee group selection, organizer membership controls and CSV exports.
+- Office-hour schedules with time-zone handling, recurrence, previews, booking capacity, overlap protection, cancellation, rescheduling and organizer controls.
+- Standard, multiple-choice and capacity-limited polls with voting/results, per-option limits, organizer management and deletion, and authorization checks.
+- Responsive dashboards with scoped activity and stored totals. PostgreSQL supplies shared application records and sessions for Plan B, while SQLite supports local use and the single-instance fallback. The legacy DynamoDB adapter is retained as an alternative storage path.
 
-CSV/Excel import, universal CSV/Excel poll exports, poll-to-event automation, multi-workspace tenancy are future milestones, not functioning buttons.
+Invitation links open the workspace joining flow and require confirmation. Camera scanning depends on HTTPS (or a supported localhost context), device support and camera permission. The repository includes the latest invitation/QR implementation. Deployment evidence applies to the release recorded in each report. [Workspace invitation details](docs/classroom-invitations.md).
 
-## Final implementation and measured evidence
+Universal CSV/Excel import and export and poll-to-event automation remain future extensions.
 
-![Implemented target architecture â€” not deployed](docs/architecture.png)
+## Verified AWS architecture
 
-[Deployment/recovery and class demo](docs/FINAL_DEPLOYMENT.md) Â· [Verification and performance evidence](docs/final-verification.md) Â· [Editable SVG](docs/architecture.svg). Service icons are from the [official AWS package](https://aws.amazon.com/architecture/icons/).
+![Previously verified Plan B architecture with CloudFront, a private ALB, two private EC2 instances and Single-AZ RDS PostgreSQL](docs/architecture.png)
 
-The final CloudFormation template uses a two-AZ private ASG (2/2/3), HTTPS ALB, retained/PITR shared DynamoDB, gateway endpoint, CPU/request scaling, dashboard, six alarms, application metric filters, host-memory log samples and optional private Logs/SSM endpoints. No public application IP, SSH, NAT, or bootstrap downloads. Existing Academy profile, preloaded AMI, certificate/DNS and budget review remain prerequisites.
+The verified Plan B deployment uses `us-east-1` and VPC `10.43.0.0/16`. The diagram represents that architecture and its recorded deployment evidence. [Editable SVG](docs/architecture.svg), [Plan B template](infrastructure/hub-postgres.json), [historical AWS verification](docs/evidence/plan-b-aws-live.json).
 
-`npm run test:load` and `npm run test:load:dynamodb` run 50 concurrent HTTP users through two separate local processes, using isolated databases and a health-checking test proxy. Measured 12-round runs each made **6,249 requests**, with no unexpected errors or capacity violations: **SQLite API p95 105 ms; DynamoDB Local API p95 402 ms**. A process failure/replacement preserved records and sessions with 50/50 probes successful. These desktop results do not verify EC2 sizing, AWS ALB/ASG behavior or live HTTPS. Full results and CPU/RSS measurements are in the verification report; raw repeatable outputs go to ignored `artifacts/load-*.json`.
+1. Students and organizers connect to **CloudFront over HTTPS**. A **CloudFront VPC Origin** reaches the internal Application Load Balancer over private HTTP.
+2. The ALB routes requests to healthy **Dockerized React/Express applications on two private EC2 instances**, one per Availability Zone. EC2 Auto Scaling uses minimum/desired/maximum capacities of **2/2/3** and replaces unhealthy instances.
+3. Both instances use the same **private, encrypted RDS PostgreSQL database**, including records, sessions and workspace data. The application verifies the database's TLS certificate. RDS uses **Single-AZ** storage and compute. The application tier spans two AZs.
+4. **S3** holds private releases, runtime configuration and bounded application log batches. A gateway endpoint supplies private S3 access. **CloudWatch** provides infrastructure metrics and three alarms for unhealthy ALB targets, database CPU and database free storage.
+5. **CloudFormation** defines the networking, application and database resources. Security groups restrict ALB-to-application traffic to port 3000 and application-to-database traffic to port 5432. EC2 instances have no public IPs or SSH ingress, and the design uses no NAT gateway.
 
-Create grouped events through **Events â†’ Create event â†’ Groups (optional)**. Group capacity replaces the ordinary event capacity with count Ã— students/group. Confirmed attendees can view/join/change/leave groups when enabled; owners move students, remove attendees and export membership. Failed transfers preserve the old assignment.
+The diagram reuses the existing Elastic Load Balancing, EC2 and CloudWatch service icons. [AWS architecture icon attribution](https://aws.amazon.com/architecture/icons/).
 
-Use **Scheduling â†’ Create office-hour schedule** to preview a local date/time window, zone, duration, capacity, break, buffer and weekly repeats. A 2â€“4 PM window with 15 minutes yields eight slots. Students can provide a reason, book, cancel or atomically reschedule. Owners inspect students/reasons and cancel or block appointments. Unknown legacy timestamps stay unknown. Ambiguous/nonexistent DST times are rejected. Limits: 64 appointments/schedule, 500 upcoming organizer intervals, 8 weekly occurrences. Bulk schedule editing, organizer-driven relocation of another student's booking and universal spreadsheet imports are not implemented; block an available original slot and create a replacement, or explicitly resolve confirmed bookings.
+### Deployment environments and verification
 
-The safe local seed now includes a sample office-hour schedule, 9Ã—4 grouped event, event and poll. It refuses populated storage and AWS tables. For production, provision a unique organizer through the trusted CLI and create sample resources through that account; never publish administrator passwords.
+| Environment                     | Architecture                                                                                           | Evidence                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Previously verified full Plan B | CloudFront VPC Origin, internal ALB, two private EC2 instances, Auto Scaling and shared RDS PostgreSQL | Historical AWS resource checks, functional verification and a 50-guest workload |
+| Separate classroom fallback     | CloudFront HTTPS, one EC2 instance and SQLite, with its own demo accounts and records                  | Independently verified classroom presentation workflows                         |
+| Local development               | React/Express with SQLite, with separate PostgreSQL and legacy DynamoDB test paths                     | Local feature, storage and concurrency checks                                   |
 
-SQLite and DynamoDB share an explicit multi-record transaction API. Slot/participant-guard/audit changes commit together; rescheduling includes both slots, and organizer guards serialize schedule creation. Groups remain inside the event aggregate with registrations and waitlist promotion. Sessions remain in the shared database; no sticky sessions are required.
+Academy deployments and their HTTPS addresses depend on the active Sandbox session. This README does not advertise a current public demo URL. The historical handoff records the full architecture and its operating limits. [Classroom deployment evidence](docs/classroom-deployment-status.md), [workspace migration and release handoff](docs/multi-workspace-deployment-handoff.md).
 
-No live data was migrated. To preserve an existing SQLite database, stop application writes and use a private, unused backup path:
+The historical AWS workload used **50 independent guest identities** and **452 HTTP requests**. All **384 valid requests succeeded**, with **66 expected HTTP 409 business conflicts**, two deliberate authorization checks and **zero unexpected server errors**. API p50/p95/p99 were **124/708/877 ms**, and each EC2 instance processed 226 requests. These measurements describe that recorded deployment and release. Earlier local SQLite/DynamoDB measurements have their own verification report. [AWS test evidence](docs/classroom-deployment-status.md#live-50-student-workload), [local test history](docs/final-verification.md).
+
+Grouped events, office-hour scheduling and polls use version-checked transactions to enforce capacity and preserve existing participation when a conflicting change is rejected. Both application instances share database-backed sessions. Private logical exports support SQLite-to-PostgreSQL recovery, with comparison before conditional imports. [Database and migration details](docs/plan-b-preparation.md).
+
+Create grouped events through **Events → Create event → Groups (optional)**. Group capacity replaces the ordinary event capacity with count × students/group. Confirmed attendees can view/join/change/leave groups when enabled; owners move students, remove attendees and export membership. Failed transfers preserve the old assignment.
+
+Use **Scheduling → Create office-hour schedule** to preview a local date/time window, zone, duration, capacity, break, buffer and weekly repeats. A 2–4 PM window with 15 minutes yields eight slots. Students can provide a reason, book, cancel or atomically reschedule. Owners inspect students/reasons and cancel or block appointments. Unknown legacy timestamps stay unknown. Ambiguous/nonexistent DST times are rejected. Limits: 64 appointments/schedule, 500 upcoming organizer intervals, 8 weekly occurrences. Bulk schedule editing, organizer-driven relocation of another student's booking and universal spreadsheet imports are not implemented; block an available original slot and create a replacement, or explicitly resolve confirmed bookings.
+
+The safe local seed now includes a sample office-hour schedule, 9×4 grouped event, event and poll. It refuses populated storage and AWS tables. For production, provision a unique organizer through the trusted CLI and create sample resources through that account; never publish administrator passwords.
+
+For SQLite recovery, stop application writes and export to a private, unused backup path. Review the target database settings and comparison before applying an import.
 
 ```powershell
 npm run data:migrate -- export ./data/hub.sqlite ./artifacts/private-backup.json
-# Configure the intended DynamoDB table, region and local endpoint or approved AWS access.
+# Configure the intended PostgreSQL target and verified TLS as documented.
 npm run data:migrate -- import ./artifacts/private-backup.json
 $env:ALLOW_DATA_IMPORT = 'true'
 npm run data:migrate -- import ./artifacts/private-backup.json --apply
@@ -56,15 +71,23 @@ Import is comparison-only by default. Applied batches insert conditionally and r
 
 ## Screenshots
 
-Actual local prototype screenshots, using SQLite-backed sample test records; **not AWS deployment evidence**:
+Organizer dashboard and Project workspace controls, captured during the previously verified Plan B deployment.
 
-![Local dashboard](docs/screenshots/local-dashboard.png)
+![Organizer dashboard with Project workspace controls](docs/screenshots/organizer-dashboard.webp)
 
-[Mobile events screenshot](docs/screenshots/local-mobile-events.png). Recreate with `npm run test:e2e`; see [screenshot notes](docs/screenshots/README.md).
+Organizer roster with confirmed attendees and the event waitlist, extracted from the supplied presentation.
+
+![Event roster showing confirmed attendees and waiting participants](docs/screenshots/event-waitlist.webp)
+
+Group memberships and remaining seats from the presentation's nine-group registration example.
+
+<img src="docs/screenshots/group-memberships.webp" alt="Nine registration groups with four seats each and current memberships" width="640">
+
+These genuine captures show the application interface and sample records from their original sessions. Capture sources and release context are recorded in the screenshot notes. [Screenshot provenance](docs/screenshots/README.md).
 
 ## Stack and repository
 
-React, TypeScript, Vite, Tailwind CSS and React Router; Node **24 LTS**, Express 5, Zod, AWS SDK v3; Node SQLite for local/single-instance persistence and an optional DynamoDB cloud adapter; Vitest/Testing Library/Supertest and an installed-browser smoke test; Docker, GitHub Actions and CloudFormation. `package-lock.json` pins the dependency resolution. Node 24's built-in SQLite interface is experimental; the single-instance deployment accepts that limitation for the classroom project.
+React, TypeScript, Vite, Tailwind CSS and React Router run the frontend. Node **24 LTS**, Express 5 and Zod run the API. RDS PostgreSQL supplies shared Plan B persistence, SQLite supports local and single-instance use, and the legacy DynamoDB adapter remains available. Vitest, Testing Library and Supertest cover application behavior. Docker packages the application, CloudFormation defines AWS resources, and GitHub Actions checks and packages releases. `package-lock.json` pins dependencies.
 
 ```text
 frontend/             React pages, forms, styling and API client
@@ -72,12 +95,12 @@ backend/src/          API, authentication, service logic, storage and configurat
 shared/               Shared TypeScript entity and response contracts
 tests/                API, concurrency, security, frontend and DynamoDB Local tests
 infrastructure/       Academy-compatible CloudFormation and example parameters
-scripts/              Local provisioning/seeding, verification and future release/deployment
+scripts/              Local provisioning/seeding, verification and release/deployment
 docs/                 API, data model, security and midpoint deliverables
 .github/workflows/    Build/test CI only; no deployment
 ```
 
-## Start locally â€” no AWS or Docker required
+## Start locally — no AWS or Docker required
 
 Install Node 24, then from this repository in PowerShell:
 
@@ -100,9 +123,11 @@ Copy-Item .env.example .env
 
 Defaults work without `.env`. See the comments in [.env.example](.env.example). Keep `ALLOW_AWS=false`. For another local demo without deleting existing data, set `$env:SQLITE_PATH='./data/another-demo.sqlite'` before seeding and starting in the same terminal.
 
+Private workspaces require the explicit workspace migration for a seeded or existing database. Select the Project workspace owner, review the dry run and apply while writers are stopped, following the documented SQLite procedure. [Workspace migration steps](docs/multi-workspace-deployment-handoff.md#dry-run-and-migration).
+
 ### Provision your own organizer
 
-Use a password of 12â€“128 characters including uppercase, lowercase and a number. Set it in the session rather than passing it on the command line:
+Use a password of 12–128 characters including uppercase, lowercase and a number. Set it in the session rather than passing it on the command line:
 
 ```powershell
 $env:HUB_USER_PASSWORD = [System.Net.NetworkCredential]::new('', (Read-Host 'Organizer password' -AsSecureString)).Password
@@ -110,7 +135,7 @@ npm run user:create -- 'organizer@example.test' 'Project Organizer' organizer
 Remove-Item Env:HUB_USER_PASSWORD
 ```
 
-Public signup creates attendees only. Organizers can manage only their own resources. For an existing account, this command refuses duplicate creation; it does not silently replace users/passwords.
+Public signup creates attendees only. Workspace Owners and Managers manage their workspace resources, and attendees manage their own participation. For an existing account, this command refuses duplicate creation; it does not silently replace users/passwords.
 
 ### Run the built application
 
@@ -120,15 +145,15 @@ $env:APP_ORIGIN = 'http://localhost:3000'
 npm start
 ```
 
-Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` supports persistent SQLite on one instance or the existing DynamoDB adapter. HTTPS is the default; disposable classroom HTTP requires explicit `ALLOW_INSECURE_HTTP=true` with SQLite. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
+Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` supports persistent SQLite on one instance or a configured shared PostgreSQL/DynamoDB adapter. The verified Plan B uses PostgreSQL with certificate-verified TLS. HTTPS is the default; disposable classroom HTTP requires explicit `ALLOW_INSECURE_HTTP=true` with SQLite. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
 
-## Stage 1 polling
+## Poll management
 
 Create a poll from **Polls > Create poll**. Standard voting remains the default. Select **Capacity-limited signup** to set a capacity for each topic, or **Multiple choice** to set a maximum and optional topic capacities (blank means unlimited). Capacity signups identify participants; ordinary polls are anonymous by default. Advanced settings control organizer voting (disabled for new polls), changes, cancellation, result visibility and draft creation.
 
-**Manage poll** is available to the owner and trusted administrators. Open/close/archive polls, edit settings/capacities, and search/filter/sort/page through identified participants. Removing a participant requires confirmation and cancels all their active selections, releasing places. Capacity reductions below confirmed signups and unsafe option/type/anonymity/selection-limit edits are rejected. Anonymous polls provide aggregate management only. Closed polls can reopen; archived polls preserve history and cannot reopen. Exports for polls are scheduled for Stage 4.
+**Manage poll** is available to authorized workspace organizers and trusted administrators within their workspace access. Open/close/archive polls, edit settings/capacities, and search/filter/sort/page through identified participants. Removing a participant requires confirmation and cancels all their active selections, releasing places. Capacity reductions below confirmed signups and unsafe option/type/anonymity/selection-limit edits are rejected. Anonymous polls provide aggregate management only. Closed polls can reopen; archived polls preserve history and cannot reopen. Exports for polls are scheduled for Stage 4.
 
-Administrator access is application-wide for polls in this single-workspace prototype. Provision it through the existing trusted command (never public signup):
+Workspace membership scopes access to poll management. Trusted administrator accounts are provisioned through the existing CLI:
 
 ```powershell
 $env:HUB_USER_PASSWORD = [System.Net.NetworkCredential]::new('', (Read-Host 'Administrator password' -AsSecureString)).Password
@@ -150,7 +175,7 @@ To check the feature, use separate organizer/student/admin sessions: publish a s
 
 ## Docker and DynamoDB Local
 
-Docker was not installed on the implementation workstation. DynamoDB Local 3.3.1 was run directly using Java and its real transactions were verified; Docker execution remains unverified locally. On a Docker-enabled workstation:
+Docker packaging was exercised in the recorded AWS deployment. For a local DynamoDB environment on a Docker-enabled workstation:
 
 ```powershell
 docker compose up --build -d
@@ -183,41 +208,27 @@ cfn-lint infrastructure/hub.yaml
 
 Set `HUB_BROWSER_PATH` to an installed Chromium-compatible executable if needed. `test:e2e` uses an isolated temporary SQLite database, starts/stops its own port-3100 server, verifies UI flows, and captures local screenshots. Regular `npm test` explicitly skips the separate DynamoDB Local integration test until `npm run test:dynamodb` is selected. [Verification](docs/midpoint/verification.md) records exactly what ran and remaining limits.
 
-GitHub Actions installs locked dependencies, checks formatting/lint/types, runs application and local-DynamoDB tests, builds frontend/backend, validates CloudFormation and builds the Docker image. After successful main-branch CI, the existing CD workflow packages build artifacts using the same root package layout. Both workflows have read-only contents permission and do not publish an image or deploy AWS resources. Cloud deployment is not enabled.
+GitHub Actions installs locked dependencies, checks formatting/lint/types, runs application and local-DynamoDB tests, builds frontend/backend, validates CloudFormation and builds the Docker image. After successful main-branch CI, the existing CD workflow packages build artifacts using the same root package layout. Both workflows use read-only contents permission. AWS deployment follows the separately approved CloudFormation workflow.
 
-## Single-instance Ubuntu EC2 preparation
+## Single-EC2 classroom fallback
 
-Historical single-instance prototype only: follow [AWS_EC2_DEPLOYMENT.md](docs/AWS_EC2_DEPLOYMENT.md): one manually launched Ubuntu instance, Nginx, systemd, Node 24, built React/Express and persistent SQLite outside code releases. This configuration is preserved from the merged deployment branch; no live deployment is claimed. No AWS credentials or GitHub Actions CD configuration are required. The final scalability/HA evaluation requires the two-instance shared-DynamoDB architecture below, not this SQLite prototype.
+A separate AWS Academy classroom environment used CloudFront HTTPS, one EC2 instance and SQLite with fresh demonstration accounts and records. Its resources and data were independent of the full Plan B deployment. The older Ubuntu/Nginx/systemd recipe remains available as a historical single-instance prototype. [Original EC2 preparation](docs/AWS_EC2_DEPLOYMENT.md).
 
 Added commands: `npm run start:production` enforces production validation; `npm run test:production` builds and verifies production serving, authentication, origin checks, demo seed safeguards and data/session persistence across a process restart. `npm run user:create:built` and `npm run demo:seed:built` use compiled CLI files after building. Production demo seeding requires an explicit `ALLOW_DEMO_SEED=true` and empty SQLite storage. Existing development scripts are unchanged.
 
 See [demo checklist](docs/AWS_DEMO_CHECKLIST.md), [troubleshooting](docs/AWS_TROUBLESHOOTING.md), and [preparation verification](docs/DEPLOYMENT_VERIFICATION.md). The optional `infrastructure/single-ec2.yaml` prepares one instance/security group only; account-specific Sandbox permissions must be checked manually.
 
-## Prepared AWS architecture
+## Deployment references
 
-```mermaid
-flowchart LR
-  Browser[Browser HTTPS] --> ALB[ALB: two public subnets]
-  ALB --> EC2[ASG: private EC2 in two AZs]
-  Profile[Existing permitted instance profile] --> EC2
-  EC2 --> Endpoint[DynamoDB gateway endpoint]
-  Endpoint --> DB[(Regional DynamoDB)]
-  EC2 -. optional Logs endpoint .-> CW[CloudWatch]
-  ALB -. metrics .-> CW
-  Trail[Existing or opt-in CloudTrail] -. management audit .-> EC2
-```
+The full Plan B uses the PostgreSQL template and private S3 bootstrap. Deployment procedures, release checks and recovery requirements are documented separately from the local development workflow. Academy permissions, quotas, session duration and costs require review for each deployment. [Plan B template](infrastructure/hub-postgres.json), [recovery procedure](docs/plan-b-recovery.md), [release handoff](docs/frontend-release-handoff.md).
 
-The Academy design accepts an **existing** profile (IAM is read-only), avoids Cognito, allows only configurable t2/t3 types, caps ASG parameters at nine, and defaults to minimum/desired two instances with maximum three. Verify actual Academy quotas and budget; template bounds are not proof of available account quota. No NAT is created. Private EC2 starts a preloaded image from a prepared AMI rather than downloading Docker/package dependencies.
-
-An existing permitted certificate/DNS and suitable instance profile/PassRole are unresolved account prerequisites. TLS is not claimed deployed. CloudWatch Logs delivery requires explicit endpoint cost opt-in plus permissions; CloudTrail creation is optional if an existing appropriate trail suffices.
-
-**Stop before connecting/deploying.** The exact future Academy connection, offline AMI preparation, local parameter review, change-set creation/inspection, approved execution, verification and cleanup commands are in [deployment.md](docs/midpoint/deployment.md). `Deploy-ChangeSet.ps1` requires explicit `-AllowAws` and never executes a change set during creation. No IAM capabilities are required for this template. Before deployment approval, review all prerequisites and current costs; no free-tier promise is made.
+The earlier DynamoDB CloudFormation design and midpoint materials remain as project history and alternative infrastructure. [Legacy DynamoDB template](infrastructure/hub.yaml), [midpoint deployment notes](docs/midpoint/deployment.md).
 
 ## API and security
 
-See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and [architecture](docs/midpoint/architecture.md). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; the optional DynamoDB deployment uses role-based AWS access; the single-instance SQLite deployment does not access AWS APIs. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
+See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and the [Plan B architecture](#verified-aws-architecture). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; the optional DynamoDB deployment uses role-based AWS access; the single-instance SQLite deployment does not access AWS APIs. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
 
-## Midpoint materials and roadmap
+## Midpoint history and remaining work
 
 - [Progress, risks and final roadmap](docs/midpoint/progress.md)
 - [Eight-minute demo](docs/midpoint/demo-script.md)
@@ -226,7 +237,7 @@ See [API routes](docs/api.md), [database design](docs/database.md), [security co
 - [Actual verification record](docs/midpoint/verification.md)
 - [Future deployment prerequisites and cleanup](docs/midpoint/deployment.md)
 
-Remaining live work: validate budget/session duration, quotas, profile/certificate/domain and release AMI; deploy an authorized change set; verify HTTPS, CloudWatch datapoints/log events, EC2 sizing, ALB failure handling and ASG replacement. Pagination/workspace isolation, universal imports and poll-to-event workflows remain future extensions.
+The linked midpoint deliverables describe earlier project stages. Remaining extensions include universal spreadsheet imports, poll-to-event workflows, email delivery, password recovery and database Multi-AZ failover. Private workspaces, scoped queries and workspace access isolation are implemented.
 
 ## Contributors and license
 
@@ -234,9 +245,9 @@ University Cloud Computing project team (three contributors; add agreed public d
 
 ## November 13 reliability and query update
 
-The active UI now uses bounded resource pages and transactional summary counts instead of repeatedly downloading the workspace. See [optimization verification](docs/optimization-verification.md) for current measurements, test evidence, migration prerequisites and limitations. Historical November 9 results above remain historical, not new measurements.
+The active UI now uses bounded resource pages and transactional summary counts instead of repeatedly downloading the workspace. See [optimization verification](docs/optimization-verification.md) for current measurements, test evidence, migration prerequisites and limitations. This report preserves the earlier local test measurements and their original context.
 
-Set `DEPLOYMENT_MODE=local`, `ec2`, or `aws-multi` independently of database technology. Multi-instance AWS requires shared Amazon DynamoDB; a local DynamoDB endpoint is rejected for that mode. EC2 examples and the multi-AZ template set their respective deployment modes explicitly. `/api/health` exposes only the mode, database label and configured HTTPS status.
+Set `DEPLOYMENT_MODE=local`, `ec2`, or `aws-multi` independently of database technology. Multi-instance AWS requires a shared database. Plan B uses PostgreSQL. The legacy DynamoDB path rejects a local endpoint in this mode. EC2 examples and the multi-AZ template set their respective deployment modes explicitly. `/api/health` exposes only the mode, database label and configured HTTPS status.
 
 SQLite expired-session maintenance runs once at startup and every `SESSION_CLEANUP_SECONDS` (default 900, minimum 60); shutdown clears its timer. DynamoDB still uses TTL and authentication always checks expiry.
 
@@ -244,4 +255,4 @@ SQLite expired-session maintenance runs once at startup and every `SESSION_CLEAN
 
 Optional appointment downloads are `.ics` snapshots, not email invitations or reminders. Delete an old calendar entry after cancellation/rescheduling and download the replacement. No email delivery or password-reset service is claimed.
 
-Additional commands: `npx tsx scripts/query-benchmark.ts`, `node scripts/render-architecture.mjs`, and `HUB_LOAD_MODE=legacy` / `HUB_LOAD_MODE=paginated` with `test:load` (PowerShell: set `$env:HUB_LOAD_MODE`). Loads accept only isolated local databases, not production targets.
+Additional local query commands include `npx tsx scripts/query-benchmark.ts` and `HUB_LOAD_MODE=legacy` / `HUB_LOAD_MODE=paginated` with `test:load` (PowerShell: set `$env:HUB_LOAD_MODE`). Loads accept only isolated local databases, not production targets.
