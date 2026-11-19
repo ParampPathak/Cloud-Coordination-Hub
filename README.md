@@ -2,7 +2,7 @@
 
 A shared workspace for events, registrations, automatic waitlists, polls, and office-hour appointments. Built for a university AWS Cloud Computing final project.
 
-**Project status.** Private workspaces, invitation links and QR sharing/scanning are implemented in the current source. The full Plan B architecture was deployed and verified in earlier AWS Academy sessions. Current public availability has not been reverified for this documentation update. Historical deployment evidence records the tested release and Sandbox session.
+**Project status.** Private workspaces, invitation links and QR sharing/scanning are implemented in the current source. The final AWS architecture was deployed and verified in earlier AWS Academy sessions. Current public availability has not been reverified for this documentation update. Historical deployment evidence records the tested release and Sandbox session.
 
 ## Why this project
 
@@ -16,17 +16,19 @@ Teams often juggle forms, spreadsheets, and scheduling tools. Cloud Coordination
 - Events with capacity limits, duplicate protection, FIFO waitlists and automatic promotion after cancellation. Grouped registration supports automatic assignment, attendee group selection, organizer membership controls and CSV exports.
 - Office-hour schedules with time-zone handling, recurrence, previews, booking capacity, overlap protection, cancellation, rescheduling and organizer controls.
 - Standard, multiple-choice and capacity-limited polls with voting/results, per-option limits, organizer management and deletion, and authorization checks.
-- Responsive dashboards with scoped activity and stored totals. PostgreSQL supplies shared application records and sessions for Plan B, while SQLite supports local use and the single-instance fallback. The legacy DynamoDB adapter is retained as an alternative storage path.
+- Responsive dashboards with scoped activity and stored totals. PostgreSQL supplies shared application records and sessions for the AWS deployment, while SQLite supports local use and the single-instance fallback. The legacy DynamoDB adapter is retained as an alternative storage path.
 
 Invitation links open the workspace joining flow and require confirmation. Camera scanning depends on HTTPS (or a supported localhost context), device support and camera permission. The repository includes the latest invitation/QR implementation. Deployment evidence applies to the release recorded in each report. [Workspace invitation details](docs/classroom-invitations.md).
 
 Universal CSV/Excel import and export and poll-to-event automation remain future extensions.
 
-## Verified AWS architecture
+<a id="verified-aws-architecture"></a>
 
-![Previously verified Plan B architecture with CloudFront, a private ALB, two private EC2 instances and Single-AZ RDS PostgreSQL](docs/architecture.png)
+## Final AWS Architecture
 
-The verified Plan B deployment uses `us-east-1` and VPC `10.43.0.0/16`. The diagram represents that architecture and its recorded deployment evidence. [Editable SVG](docs/architecture.svg), [Plan B template](infrastructure/hub-postgres.json), [historical AWS verification](docs/evidence/plan-b-aws-live.json).
+![Previously verified AWS architecture with CloudFront, a private ALB, two private EC2 instances and Single-AZ RDS PostgreSQL](docs/architecture.png)
+
+The previously verified AWS deployment uses `us-east-1` and VPC `10.43.0.0/16`. The diagram represents that architecture and its recorded deployment evidence. [Editable SVG](docs/architecture.svg), [AWS PostgreSQL infrastructure template](infrastructure/hub-postgres.json), [historical AWS verification](docs/evidence/plan-b-aws-live.json).
 
 1. Students and organizers connect to **CloudFront over HTTPS**. A **CloudFront VPC Origin** reaches the internal Application Load Balancer over private HTTP.
 2. The ALB routes requests to healthy **Dockerized React/Express applications on two private EC2 instances**, one per Availability Zone. EC2 Auto Scaling uses minimum/desired/maximum capacities of **2/2/3** and replaces unhealthy instances.
@@ -38,11 +40,11 @@ The diagram reuses the existing Elastic Load Balancing, EC2 and CloudWatch servi
 
 ### Deployment environments and verification
 
-| Environment                     | Architecture                                                                                           | Evidence                                                                        |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
-| Previously verified full Plan B | CloudFront VPC Origin, internal ALB, two private EC2 instances, Auto Scaling and shared RDS PostgreSQL | Historical AWS resource checks, functional verification and a 50-guest workload |
-| Separate classroom fallback     | CloudFront HTTPS, one EC2 instance and SQLite, with its own demo accounts and records                  | Independently verified classroom presentation workflows                         |
-| Local development               | React/Express with SQLite, with separate PostgreSQL and legacy DynamoDB test paths                     | Local feature, storage and concurrency checks                                   |
+| Environment                                  | Architecture                                                                                           | Evidence                                                                        |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| Final AWS Architecture (previously verified) | CloudFront VPC Origin, internal ALB, two private EC2 instances, Auto Scaling and shared RDS PostgreSQL | Historical AWS resource checks, functional verification and a 50-guest workload |
+| Separate classroom fallback                  | CloudFront HTTPS, one EC2 instance and SQLite, with its own demo accounts and records                  | Independently verified classroom presentation workflows                         |
+| Local development                            | React/Express with SQLite, with separate PostgreSQL and legacy DynamoDB test paths                     | Local feature, storage and concurrency checks                                   |
 
 Academy deployments and their HTTPS addresses depend on the active Sandbox session. This README does not advertise a current public demo URL. The historical handoff records the full architecture and its operating limits. [Classroom deployment evidence](docs/classroom-deployment-status.md), [workspace migration and release handoff](docs/multi-workspace-deployment-handoff.md).
 
@@ -71,7 +73,7 @@ Import is comparison-only by default. Applied batches insert conditionally and r
 
 ## Screenshots
 
-Organizer dashboard and Project workspace controls, captured during the previously verified Plan B deployment.
+Organizer dashboard and Project workspace controls, captured during the previously verified AWS deployment.
 
 ![Organizer dashboard with Project workspace controls](docs/screenshots/organizer-dashboard.webp)
 
@@ -87,7 +89,7 @@ These genuine captures show the application interface and sample records from th
 
 ## Stack and repository
 
-React, TypeScript, Vite, Tailwind CSS and React Router run the frontend. Node **24 LTS**, Express 5 and Zod run the API. RDS PostgreSQL supplies shared Plan B persistence, SQLite supports local and single-instance use, and the legacy DynamoDB adapter remains available. Vitest, Testing Library and Supertest cover application behavior. Docker packages the application, CloudFormation defines AWS resources, and GitHub Actions checks and packages releases. `package-lock.json` pins dependencies.
+React, TypeScript, Vite, Tailwind CSS and React Router run the frontend. Node **24 LTS**, Express 5 and Zod run the API. RDS PostgreSQL supplies shared persistence for the AWS deployment, SQLite supports local and single-instance use, and the legacy DynamoDB adapter remains available. Vitest, Testing Library and Supertest cover application behavior. Docker packages the application, CloudFormation defines AWS resources, and GitHub Actions checks and packages releases. `package-lock.json` pins dependencies.
 
 ```text
 frontend/             React pages, forms, styling and API client
@@ -145,7 +147,7 @@ $env:APP_ORIGIN = 'http://localhost:3000'
 npm start
 ```
 
-Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` supports persistent SQLite on one instance or a configured shared PostgreSQL/DynamoDB adapter. The verified Plan B uses PostgreSQL with certificate-verified TLS. HTTPS is the default; disposable classroom HTTP requires explicit `ALLOW_INSECURE_HTTP=true` with SQLite. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
+Open **http://localhost:3000**. This serves the built frontend and API from one process. `NODE_ENV` remains development for local HTTP/SQLite. `NODE_ENV=production` supports persistent SQLite on one instance or a configured shared PostgreSQL/DynamoDB adapter. The AWS deployment uses PostgreSQL with certificate-verified TLS. HTTPS is the default; disposable classroom HTTP requires explicit `ALLOW_INSECURE_HTTP=true` with SQLite. If development `tsx` tooling is unavailable, compiled organizer/seed scripts are also under `dist/backend/scripts/` after the build.
 
 ## Poll management
 
@@ -212,7 +214,7 @@ GitHub Actions installs locked dependencies, checks formatting/lint/types, runs 
 
 ## Single-EC2 classroom fallback
 
-A separate AWS Academy classroom environment used CloudFront HTTPS, one EC2 instance and SQLite with fresh demonstration accounts and records. Its resources and data were independent of the full Plan B deployment. The older Ubuntu/Nginx/systemd recipe remains available as a historical single-instance prototype. [Original EC2 preparation](docs/AWS_EC2_DEPLOYMENT.md).
+A separate AWS Academy classroom environment used CloudFront HTTPS, one EC2 instance and SQLite with fresh demonstration accounts and records. Its resources and data were independent of the full AWS deployment. The older Ubuntu/Nginx/systemd recipe remains available as a historical single-instance prototype. [Original EC2 preparation](docs/AWS_EC2_DEPLOYMENT.md).
 
 Added commands: `npm run start:production` enforces production validation; `npm run test:production` builds and verifies production serving, authentication, origin checks, demo seed safeguards and data/session persistence across a process restart. `npm run user:create:built` and `npm run demo:seed:built` use compiled CLI files after building. Production demo seeding requires an explicit `ALLOW_DEMO_SEED=true` and empty SQLite storage. Existing development scripts are unchanged.
 
@@ -220,13 +222,13 @@ See [demo checklist](docs/AWS_DEMO_CHECKLIST.md), [troubleshooting](docs/AWS_TRO
 
 ## Deployment references
 
-The full Plan B uses the PostgreSQL template and private S3 bootstrap. Deployment procedures, release checks and recovery requirements are documented separately from the local development workflow. Academy permissions, quotas, session duration and costs require review for each deployment. [Plan B template](infrastructure/hub-postgres.json), [recovery procedure](docs/plan-b-recovery.md), [release handoff](docs/frontend-release-handoff.md).
+The final AWS architecture uses the PostgreSQL infrastructure template and private S3 bootstrap. Deployment procedures, release checks and recovery requirements are documented separately from the local development workflow. Academy permissions, quotas, session duration and costs require review for each deployment. [AWS PostgreSQL infrastructure template](infrastructure/hub-postgres.json), [recovery procedure](docs/plan-b-recovery.md), [release handoff](docs/frontend-release-handoff.md).
 
 The earlier DynamoDB CloudFormation design and midpoint materials remain as project history and alternative infrastructure. [Legacy DynamoDB template](infrastructure/hub.yaml), [midpoint deployment notes](docs/midpoint/deployment.md).
 
 ## API and security
 
-See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and the [Plan B architecture](#verified-aws-architecture). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; the optional DynamoDB deployment uses role-based AWS access; the single-instance SQLite deployment does not access AWS APIs. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
+See [API routes](docs/api.md), [database design](docs/database.md), [security controls and limits](docs/security.md) and the [Final AWS Architecture](#final-aws-architecture). Health: `/api/health`; dependency readiness: `/api/ready`. Application records/sessions reside in the database; the optional DynamoDB deployment uses role-based AWS access; the single-instance SQLite deployment does not access AWS APIs. Passwords are salted/hashed, session tokens stored as hashes, and mutations enforce an explicit origin allowlist (exact origin in production). There is no development identity bypass.
 
 ## Midpoint history and remaining work
 
@@ -247,7 +249,7 @@ University Cloud Computing project team (three contributors; add agreed public d
 
 The active UI now uses bounded resource pages and transactional summary counts instead of repeatedly downloading the workspace. See [optimization verification](docs/optimization-verification.md) for current measurements, test evidence, migration prerequisites and limitations. This report preserves the earlier local test measurements and their original context.
 
-Set `DEPLOYMENT_MODE=local`, `ec2`, or `aws-multi` independently of database technology. Multi-instance AWS requires a shared database. Plan B uses PostgreSQL. The legacy DynamoDB path rejects a local endpoint in this mode. EC2 examples and the multi-AZ template set their respective deployment modes explicitly. `/api/health` exposes only the mode, database label and configured HTTPS status.
+Set `DEPLOYMENT_MODE=local`, `ec2`, or `aws-multi` independently of database technology. Multi-instance AWS requires a shared database. The AWS deployment uses PostgreSQL. The legacy DynamoDB path rejects a local endpoint in this mode. EC2 examples and the multi-AZ template set their respective deployment modes explicitly. `/api/health` exposes only the mode, database label and configured HTTPS status.
 
 SQLite expired-session maintenance runs once at startup and every `SESSION_CLEANUP_SECONDS` (default 900, minimum 60); shutdown clears its timer. DynamoDB still uses TTL and authentication always checks expiry.
 

@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1470" viewBox="0 0 1200 1470" role="img" aria-labelledby="title desc">
-<title id="title">Cloud Coordination Hub — previously verified Plan B AWS architecture</title>
+<title id="title">Cloud Coordination Hub — previously verified final AWS architecture</title>
 <desc id="desc">Students and organizers use CloudFront HTTPS. A CloudFront VPC origin connects to an internal ALB in VPC 10.43.0.0/16, us-east-1. An Auto Scaling group maintains two private Docker application instances across two Availability Zones, with maximum capacity three. Both instances share private encrypted Single-AZ RDS PostgreSQL over verified TLS. An S3 gateway endpoint provides private release and log transport. CloudWatch supplies native infrastructure metrics and three alarms. CloudFormation manages the infrastructure.</desc>
 <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M1 1 L9 5 L1 9" fill="none" stroke="#37685b" stroke-width="1.7" /></marker></defs>
 <style>text{font-family:Arial,sans-serif;fill:#153f34}.title{font-size:34px;font-weight:700}.heading{font-size:26px;font-weight:700}.label{font-size:22px;font-weight:700}.detail{font-size:20px;fill:#405f55}.small{font-size:18px;fill:#405f55}.node{fill:white;stroke:#b5c9bf;stroke-width:1.7}.flow{fill:none;stroke:#37685b;stroke-width:2.5;marker-end:url(#arrow)}.branch{fill:none;stroke:#37685b;stroke-width:2.5}</style>
 <rect width="1200" height="1470" fill="#f4f7f3" />
 <text x="40" y="50" class="title">Cloud Coordination Hub</text>
-<text x="40" y="82" class="detail">Previously verified Plan B deployment · AWS Academy</text>
+<text x="40" y="82" class="detail">Previously verified AWS deployment · AWS Academy</text>
 <rect x="380" y="115" width="440" height="80" rx="12" class="node" />
 <text x="600" y="149" text-anchor="middle" class="label">Students and organizers</text>
 <text x="600" y="177" text-anchor="middle" class="detail">Web and mobile browsers</text>
